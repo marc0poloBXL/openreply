@@ -101,9 +101,28 @@ export async function exchangeCodeForToken(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const bodyText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(bodyText);
+    } catch {
+      error = { raw: bodyText };
+    }
+    // Graph API errors nest the detail under error.message whereas
+    // the Basic Display endpoint puts it in error_message.
+    const detail =
+      error.error?.message ??
+      error.error_description ??
+      error.error_message ??
+      error.error ??
+      bodyText.slice(0, 500);
+    console.error("[Instagram Token Exchange] Failed:", {
+      status: response.status,
+      detail,
+      body: bodyText.slice(0, 1000),
+    });
     throw new Error(
-      `Token exchange failed: ${error.error_message || error.error_description || error.error || JSON.stringify(error)}`
+      `Token exchange failed: ${detail}`
     );
   }
 
