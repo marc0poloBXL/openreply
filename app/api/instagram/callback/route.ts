@@ -43,13 +43,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
-    console.log("[Instagram Callback] Exchange attempt:", {
-      redirectUri,
-      baseUrl,
-      instagramAppId: process.env.INSTAGRAM_APP_ID?.slice(0, 6) + "...",
-      hasCode: !!code,
-      hasSecret: !!process.env.INSTAGRAM_APP_SECRET,
-    });
     const { accessToken: shortLivedToken } = await exchangeCodeForToken(
       code,
       redirectUri

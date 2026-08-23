@@ -5,10 +5,10 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "crypto";
-import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
+import { getEncryptionKeyHex, getMetaGraphApiVersion, requireEnv } from "@/lib/env";
 
 const INSTAGRAM_OAUTH_URL = "https://www.instagram.com/oauth/authorize";
-const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
+const INSTAGRAM_TOKEN_URL = `https://graph.facebook.com/${getMetaGraphApiVersion()}/oauth/access_token`;
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
@@ -102,18 +102,8 @@ export async function exchangeCodeForToken(
 
   if (!response.ok) {
     const error = await response.json();
-    const responseText = await response.text().catch(() => "");
-    console.error("[Instagram Token Exchange] Error response:", {
-      status: response.status,
-      statusText: response.statusText,
-      error,
-      responseText,
-      redirectUri,
-      clientId: body.get("client_id")?.slice(0, 6) + "...",
-    });
     throw new Error(
-      `Token exchange failed: ${error.error_message || error.error_description || error.error || JSON.stringify(error)}` +
-        ` | redirect_uri=${redirectUri} | status=${response.status}`
+      `Token exchange failed: ${error.error_message || error.error_description || error.error || JSON.stringify(error)}`
     );
   }
 
