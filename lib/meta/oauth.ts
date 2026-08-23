@@ -121,10 +121,11 @@ export async function exchangeCodeForToken(
     console.error("[Instagram Token Exchange] Failed:", {
       status: response.status,
       detail,
+      redirectUri,
       body: bodyText.slice(0, 1000),
     });
     throw new Error(
-      `Token exchange failed: ${detail}`
+      `Token exchange failed: ${detail} | redirect_uri="${redirectUri}" | status=${response.status} | body=${bodyText.slice(0, 300)}`
     );
   }
 
