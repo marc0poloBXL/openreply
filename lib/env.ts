@@ -15,6 +15,14 @@ export function requireEnv(name: string): string {
 }
 
 export function getBaseUrl(): string {
+  // VERCEL_URL is always set in Vercel deployments and doesn't need a
+  // Production-scoped env var. Use it as a fallback so the Instagram OAuth
+  // callback constructs the correct redirect URI even when NEXTAUTH_URL
+  // inadvertently only has Preview/Development scope.
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
+    return `https://${vercelUrl}`;
+  }
   return process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 }
 
