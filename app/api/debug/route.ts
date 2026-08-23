@@ -7,6 +7,9 @@ export async function GET() {
       ? `${process.env.INSTAGRAM_APP_ID.substring(0, 6)}...`
       : "NOT SET",
     INSTAGRAM_APP_SECRET: process.env.INSTAGRAM_APP_SECRET ? "SET" : "NOT SET",
+    FACEBOOK_APP_ID_PREFIX: process.env.FACEBOOK_APP_ID
+      ? `${process.env.FACEBOOK_APP_ID.substring(0, 6)}...`
+      : "NOT SET",
     FACEBOOK_APP_SECRET: process.env.FACEBOOK_APP_SECRET ? "SET" : "NOT SET",
     VERCEL_URL: process.env.VERCEL_URL ?? "NOT SET",
     META_GRAPH_API_VERSION: process.env.META_GRAPH_API_VERSION ?? "NOT SET",
