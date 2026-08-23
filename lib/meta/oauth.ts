@@ -102,8 +102,18 @@ export async function exchangeCodeForToken(
 
   if (!response.ok) {
     const error = await response.json();
+    const responseText = await response.text().catch(() => "");
+    console.error("[Instagram Token Exchange] Error response:", {
+      status: response.status,
+      statusText: response.statusText,
+      error,
+      responseText,
+      redirectUri,
+      clientId: body.get("client_id")?.slice(0, 6) + "...",
+    });
     throw new Error(
-      `Token exchange failed: ${error.error_message || JSON.stringify(error)}`
+      `Token exchange failed: ${error.error_message || error.error_description || error.error || JSON.stringify(error)}` +
+        ` | redirect_uri=${redirectUri} | status=${response.status}`
     );
   }
 
