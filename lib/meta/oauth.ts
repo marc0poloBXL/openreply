@@ -86,9 +86,12 @@ export async function exchangeCodeForToken(
   code: string,
   redirectUri: string
 ): Promise<{ accessToken: string; userId: string }> {
+  // The token exchange uses Facebook Graph API credentials (Facebook App ID /
+  // App Secret), NOT the Instagram App ID used in the authorize URL. These are
+  // different numbers — see docs/setup.md Step 5.
   const body = new URLSearchParams({
-    client_id: requireEnv("INSTAGRAM_APP_ID"),
-    client_secret: requireEnv("INSTAGRAM_APP_SECRET"),
+    client_id: requireEnv("FACEBOOK_APP_ID"),
+    client_secret: requireEnv("FACEBOOK_APP_SECRET"),
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
     code,
