@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const redirectUri = `${baseUrl}/api/instagram/callback`;
+    // Use the exact redirect_uri that was baked into the OAuth state during the
+    // authorize step, not a fresh reconstruction. This guarantees the string
+    // passed to exchangeCodeForToken is byte-for-byte identical to the one
+    // Instagram stored for this authorization code.
+    const redirectUri = state.redirectUri ?? `${baseUrl}/api/instagram/callback`;
     const { accessToken: shortLivedToken } = await exchangeCodeForToken(
       code,
       redirectUri

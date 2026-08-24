@@ -20,6 +20,11 @@ const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 interface OAuthStatePayload {
   workspaceId: string;
   ts: number;
+  // Store the exact redirect_uri used in the authorize step so the token
+  // exchange can reuse the identical string. Reconstructing it a second time
+  // risks a subtle mismatch (trailing slash, encoding) that Instagram rejects
+  // with "redirect_uri must match".
+  redirectUri?: string;
 }
 
 function base64UrlEncode(value: string): string {
@@ -36,9 +41,9 @@ function signState(payload: string): string {
     .digest("base64url");
 }
 
-export function createOAuthState(workspaceId: string): string {
+export function createOAuthState(workspaceId: string, redirectUri: string): string {
   const payload = base64UrlEncode(
-    JSON.stringify({ workspaceId, ts: Date.now() } satisfies OAuthStatePayload)
+    JSON.stringify({ workspaceId, ts: Date.now(), redirectUri } satisfies OAuthStatePayload)
   );
   return `${payload}.${signState(payload)}`;
 }
@@ -90,17 +95,18 @@ export async function exchangeCodeForToken(
   redirectUri: string
 ): Promise<{ accessToken: string; userId: string }> {
   // Instagram Business Login: token exchange uses Instagram credentials
-  // Use FormData (multipart/form-data) as shown in Meta's curl examples
-  const body = new FormData();
-  body.append("client_id", requireEnv("INSTAGRAM_APP_ID"));
-  body.append("client_secret", requireEnv("INSTAGRAM_APP_SECRET"));
-  body.append("grant_type", "authorization_code");
-  body.append("redirect_uri", redirectUri);
-  body.append("code", code);
+  const body = new URLSearchParams({
+    client_id: requireEnv("INSTAGRAM_APP_ID"),
+    client_secret: requireEnv("INSTAGRAM_APP_SECRET"),
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code,
+  });
 
   const response = await fetch(INSTAGRAM_TOKEN_URL, {
     method: "POST",
-    body,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
   });
 
   if (!response.ok) {
