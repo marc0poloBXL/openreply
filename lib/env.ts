@@ -15,7 +15,8 @@ export function requireEnv(name: string): string {
 }
 
 export function getBaseUrl(): string {
-  return process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  // Strip trailing slash to avoid redirect URI mismatches
+  return (process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 }
 
 export function getEncryptionKeyHex(): string {

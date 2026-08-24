@@ -90,18 +90,17 @@ export async function exchangeCodeForToken(
   redirectUri: string
 ): Promise<{ accessToken: string; userId: string }> {
   // Instagram Business Login: token exchange uses Instagram credentials
-  const body = new URLSearchParams({
-    client_id: requireEnv("INSTAGRAM_APP_ID"),
-    client_secret: requireEnv("INSTAGRAM_APP_SECRET"),
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri,
-    code,
-  });
+  // Use FormData (multipart/form-data) as shown in Meta's curl examples
+  const body = new FormData();
+  body.append("client_id", requireEnv("INSTAGRAM_APP_ID"));
+  body.append("client_secret", requireEnv("INSTAGRAM_APP_SECRET"));
+  body.append("grant_type", "authorization_code");
+  body.append("redirect_uri", redirectUri);
+  body.append("code", code);
 
   const response = await fetch(INSTAGRAM_TOKEN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    body,
   });
 
   if (!response.ok) {
