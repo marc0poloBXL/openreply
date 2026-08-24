@@ -17,11 +17,6 @@ const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 interface OAuthStatePayload {
   workspaceId: string;
   ts: number;
-  // Store the exact redirect_uri used in the authorize step so the token
-  // exchange can reuse the identical string. Reconstructing it a second time
-  // risks a subtle mismatch (trailing slash, encoding) that Instagram rejects
-  // with "redirect_uri must match".
-  redirectUri?: string;
 }
 
 function base64UrlEncode(value: string): string {
@@ -38,9 +33,9 @@ function signState(payload: string): string {
     .digest("base64url");
 }
 
-export function createOAuthState(workspaceId: string, redirectUri: string): string {
+export function createOAuthState(workspaceId: string): string {
   const payload = base64UrlEncode(
-    JSON.stringify({ workspaceId, ts: Date.now(), redirectUri } satisfies OAuthStatePayload)
+    JSON.stringify({ workspaceId, ts: Date.now() } satisfies OAuthStatePayload)
   );
   return `${payload}.${signState(payload)}`;
 }
