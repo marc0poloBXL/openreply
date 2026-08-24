@@ -9,9 +9,6 @@ import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
 const INSTAGRAM_OAUTH_URL = "https://www.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
-// NOTE: This endpoint must match in both getAuthorizationUrl and exchangeCodeForToken.
-// Instagram Business Login: authorize via www.instagram.com, exchange via api.instagram.com.
-// Both use INSTAGRAM_APP_ID, NOT FACEBOOK_APP_ID.
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
