@@ -8,7 +8,10 @@ import {
 import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
 const INSTAGRAM_OAUTH_URL = "https://www.instagram.com/oauth/authorize";
-const INSTAGRAM_TOKEN_URL = "https://graph.facebook.com/v26.0/oauth/access_token";
+const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
+// NOTE: This endpoint must match in both getAuthorizationUrl and exchangeCodeForToken.
+// Instagram Business Login: authorize via www.instagram.com, exchange via api.instagram.com.
+// Both use INSTAGRAM_APP_ID, NOT FACEBOOK_APP_ID.
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
@@ -86,10 +89,10 @@ export async function exchangeCodeForToken(
   code: string,
   redirectUri: string
 ): Promise<{ accessToken: string; userId: string }> {
-  // Token exchange on Graph API needs the Facebook App credentials
+  // Instagram Business Login: token exchange uses Instagram credentials
   const body = new URLSearchParams({
-    client_id: requireEnv("FACEBOOK_APP_ID"),
-    client_secret: requireEnv("FACEBOOK_APP_SECRET"),
+    client_id: requireEnv("INSTAGRAM_APP_ID"),
+    client_secret: requireEnv("INSTAGRAM_APP_SECRET"),
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
     code,
