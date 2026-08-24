@@ -101,6 +101,13 @@ export async function exchangeCodeForToken(
     body: body.toString(),
   });
 
+  // Debug: log the exact body we sent (without secret)
+  const debugBody = body.toString().replace(/client_secret=[^&]+/, "client_secret=***");
+  console.log("[Instagram Token Exchange] Request:", {
+    url: INSTAGRAM_TOKEN_URL,
+    body: debugBody,
+  });
+
   if (!response.ok) {
     const bodyText = await response.text();
     let error;
