@@ -20,81 +20,60 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "No account" });
   }
 
-  const results: Record<string, unknown> = {
-    accountId: account.id,
-    instagramId: account.instagramId,
-    username: account.username,
-    webhookSubscribed: account.webhookSubscribed,
-  };
+  const results: Record<string, unknown> = {};
+  const accessToken = decryptToken(account.accessToken);
+  const version = getMetaGraphApiVersion();
 
-  try {
-    const accessToken = decryptToken(account.accessToken);
-    results.tokenPrefix = accessToken.substring(0, 10) + "...";
+  // Test 1: graph.instagram.com /me (confirm token is valid and see permissions)
+  {
+    const url = new URL(`https://graph.instagram.com/${version}/me`);
+    url.searchParams.set("fields", "id,user_id,username,name,account_type,followers_count");
+    url.searchParams.set("access_token", accessToken);
+    const resp = await fetch(url.toString());
+    results.igMe = { status: resp.status, data: await resp.json() };
+  }
 
-    // Test /me/media
-    try {
-      const version = getMetaGraphApiVersion();
-      const mediaUrl = new URL(`https://graph.instagram.com/${version}/me/media`);
-      mediaUrl.searchParams.set("fields", "id,media_type,media_url,comments_count,caption,timestamp");
-      mediaUrl.searchParams.set("limit", "5");
-      mediaUrl.searchParams.set("access_token", accessToken);
-      const resp = await fetch(mediaUrl.toString());
-      const raw = await resp.json();
-      results.mediaRaw = { status: resp.status, data: raw };
-    } catch (e) {
-      results.mediaError = e instanceof Error ? e.message : String(e);
-    }
+  // Test 2: graph.instagram.com /me/media?fields=comments (not count, actual comments)
+  {
+    const url = new URL(`https://graph.instagram.com/${version}/me/media`);
+    url.searchParams.set("fields", "id,media_type,comments_count,caption,timestamp,permalink");
+    url.searchParams.set("limit", "3");
+    url.searchParams.set("access_token", accessToken);
+    const resp = await fetch(url.toString());
+    const raw = await resp.json();
+    results.mediaRaw = { status: resp.status, data: raw };
+  }
 
-    // Test comments on a known media ID (first one from media list)
-    const mediaIds = results.mediaRaw && (results.mediaRaw as Record<string, unknown>).data
-      ? ((results.mediaRaw as Record<string, unknown>).data as Record<string, unknown>).data as Array<{ id: string; comments_count?: number }>
-      : [];
-    if (mediaIds.length > 0) {
-      const firstMedia = mediaIds[0];
-      results.testingMediaId = firstMedia.id;
-      results.testingCommentsCount = firstMedia.comments_count;
+  // Test 3: Try to get a facebook page token by checking if there's a linked FB page
+  // First try the /me endpoint on FB graph with the IG token
+  {
+    const url = new URL(`https://graph.facebook.com/${version}/me`);
+    url.searchParams.set("fields", "id,name");
+    url.searchParams.set("access_token", accessToken);
+    const resp = await fetch(url.toString());
+    results.fbMe = { status: resp.status, data: await resp.json() };
+  }
 
-      // graph.instagram.com — raw
-      try {
-        const version = getMetaGraphApiVersion();
-        const igUrl = new URL(`https://graph.instagram.com/${version}/${firstMedia.id}/comments`);
-        igUrl.searchParams.set("fields", "id,text,timestamp,from{id,username}");
-        igUrl.searchParams.set("access_token", accessToken);
-        const resp = await fetch(igUrl.toString());
-        const raw = await resp.json();
-        results.igCommentsRaw = { status: resp.status, data: raw };
-      } catch (e) {
-        results.igCommentsError = e instanceof Error ? e.message : String(e);
-      }
+  // Test 4: debug_token endpoint to check what the token actually is
+  {
+    const url = new URL(`https://graph.instagram.com/${version}/me`);
+    // For debugging, let's also check the token info
+    results.tokenInfo = {
+      prefix: accessToken.substring(0, 20) + "...",
+      length: accessToken.length,
+      startsWithFb: accessToken.startsWith("IG"),
+    };
+  }
 
-      // graph.facebook.com — try with IG token
-      try {
-        const version = getMetaGraphApiVersion();
-        const fbUrl = new URL(`https://graph.facebook.com/${version}/${firstMedia.id}/comments`);
-        fbUrl.searchParams.set("fields", "id,text,timestamp,from{id,username}");
-        fbUrl.searchParams.set("access_token", accessToken);
-        const resp = await fetch(fbUrl.toString());
-        const raw = await resp.json();
-        results.fbCommentsRaw = { status: resp.status, data: raw };
-      } catch (e) {
-        results.fbCommentsError = e instanceof Error ? e.message : String(e);
-      }
-
-      // graph.facebook.com with ig-user-id
-      try {
-        const version = getMetaGraphApiVersion();
-        const fbMediaUrl = new URL(`https://graph.facebook.com/${version}/${account.instagramId}/media`);
-        fbMediaUrl.searchParams.set("fields", "id,comments_count");
-        fbMediaUrl.searchParams.set("access_token", accessToken);
-        const resp = await fetch(fbMediaUrl.toString());
-        const raw = await resp.json();
-        results.fbIdMediaRaw = { status: resp.status, data: raw };
-      } catch (e) {
-        results.fbIdMediaError = e instanceof Error ? e.message : String(e);
-      }
-    }
-  } catch (e) {
-    results.decryptError = e instanceof Error ? e.message : String(e);
+  // Test 5: Try accessing an IG Business account through FB graph
+  // The Instagram Business Account ID is the user_id from /me
+  {
+    const igUserId = account.instagramId;
+    const url = new URL(`https://graph.facebook.com/${version}/${igUserId}/media`);
+    url.searchParams.set("fields", "id,comments_count");
+    url.searchParams.set("access_token", accessToken);
+    const resp = await fetch(url.toString());
+    results.fbIgMedia = { status: resp.status, data: await resp.json() };
   }
 
   return NextResponse.json({ success: true, data: results });
