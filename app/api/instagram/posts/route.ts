@@ -36,14 +36,14 @@ export async function GET(request: NextRequest) {
     const loadAll = request.nextUrl.searchParams.get("all") === "true";
     let posts;
     if (loadAll) {
-      posts = await getAllUserMedia(accessToken, 300);
+      posts = await getAllUserMedia(accessToken, 300, account.instagramId);
     } else {
       const limitParam = request.nextUrl.searchParams.get("limit");
       const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 25;
       const limit = Number.isFinite(parsedLimit)
         ? Math.min(Math.max(parsedLimit, 1), 50)
         : 25;
-      posts = await getUserMedia(accessToken, limit);
+      posts = await getUserMedia(accessToken, limit, account.instagramId);
     }
 
     return NextResponse.json({ success: true, data: posts });

@@ -157,7 +157,7 @@ async function sweepCampaign(
     mediaIds.push(automation.postId);
   } else if (automation.matchAnyPost) {
     try {
-      const media = await getUserMedia(accessToken, RECENT_MEDIA_LIMIT);
+      const media = await getUserMedia(accessToken, RECENT_MEDIA_LIMIT, account.instagramId);
       mediaIds.push(...media.map((m) => m.id));
     } catch (error) {
       stat.errors.push(`Media list: ${errMessage(error)}`);

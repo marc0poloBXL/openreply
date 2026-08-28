@@ -3,10 +3,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/env";
 import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
-import { getLongLivedToken, getUserInfo, subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
+import { getLongLivedToken, subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
-  exchangeCodeForToken,
+  exchangeFbCodeForToken,
+  exchangeFbLongLivedToken,
+  getConnectedPageToken,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
@@ -44,49 +46,86 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
 
-    console.log("[Instagram Callback] Starting token exchange:", {
-      redirectUri,
-      codePrefix: code.slice(0, 10) + "...",
-    });
-
-    const { accessToken: shortLivedToken } = await exchangeCodeForToken(
+    // Step 1: Exchange Facebook auth code for a short-lived FB user token
+    const { accessToken: shortLivedToken } = await exchangeFbCodeForToken(
       code,
       redirectUri
     );
-    const { accessToken: longLivedToken, expiresIn } =
-      await getLongLivedToken(shortLivedToken);
-    const userInfo = await getUserInfo(longLivedToken);
-    // Webhooks and the messaging API key off the professional account ID
-    // (user_id), not the app-scoped `id`. Store user_id so comment webhooks
-    // can be matched back to this account. Fall back to id if user_id is
-    // ever absent.
-    const instagramId = userInfo.user_id ?? userInfo.id;
+
+    // Step 2: Exchange for a long-lived FB user token
+    const { accessToken: longLivedFbToken } = await exchangeFbLongLivedToken(shortLivedToken);
+
+    // Step 3: Get user info from the FB token to find the Instagram account
+    const version = process.env.META_GRAPH_API_VERSION ?? "v25.0";
+    const meResp = await fetch(
+      `https://graph.facebook.com/${version}/me?fields=id,name&access_token=${longLivedFbToken}`
+    );
+    const meData = await meResp.json();
+    if (!meData.id) throw new Error("Failed to get Facebook user info");
+
+    // Step 4: Get the Instagram Business Account ID
+    const igAccountsUrl = new URL(`https://graph.facebook.com/${version}/me/accounts`);
+    igAccountsUrl.searchParams.set("fields", "id,name,instagram_business_account{id,username,name}");
+    igAccountsUrl.searchParams.set("access_token", longLivedFbToken);
+    const accountsResp = await fetch(igAccountsUrl.toString());
+    const accountsData = await accountsResp.json() as {
+      data?: Array<{ id: string; name: string; instagram_business_account?: { id: string; username: string; name: string } }>;
+    };
+
+    if (!accountsData.data) throw new Error("No Facebook pages found");
+
+    // Find the page with an Instagram Business account connected
+    let instagramId: string;
+    let username: string;
+    let pageId: string;
+    let pageToken: string;
+    let pageName: string;
+
+    const connectedPage = accountsData.data.find(p => p.instagram_business_account);
+    if (!connectedPage || !connectedPage.instagram_business_account) {
+      throw new Error(
+        "Your Instagram Business account must be linked to a Facebook Page. " +
+        "Go to Instagram Settings → Account → Linked Accounts → Facebook to connect it."
+      );
+    }
+
+    instagramId = connectedPage.instagram_business_account.id;
+    username = connectedPage.instagram_business_account.username;
+    pageId = connectedPage.id;
+    pageToken = connectedPage.access_token;
+    pageName = connectedPage.name;
+
+    // Check if account already exists
     const connection = await canConnectInstagramAccount({
       workspaceId: state.workspaceId,
       instagramId,
     });
-
     if (!connection.allowed) {
-      return NextResponse.redirect(
-        `${baseUrl}/settings?instagram=already_connected`
-      );
+      return NextResponse.redirect(`${baseUrl}/settings?instagram=already_connected`);
     }
 
-    const encryptedToken = encryptToken(longLivedToken);
-    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+    // Encrypt and store the PAGE access token (this is what we need for API calls)
+    const encryptedPageToken = encryptToken(pageToken);
+
+    // Also get the Instagram-specific long-lived token for graph.instagram.com calls
+    const igTokenResp = await fetch(
+      `https://graph.instagram.com/v25.0/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${pageToken}`
+    );
+    const igTokenData = await igTokenResp.json() as { access_token?: string };
+    const igAccessToken = igTokenData.access_token;
+
+    // Store both tokens (page token in the main field, IG token if available)
+    const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // ~60 days
 
     let webhookSubscribed = false;
     try {
       const subscription = await subscribeInstagramAccountToWebhooks(
         instagramId,
-        longLivedToken
+        pageToken
       );
       webhookSubscribed = Boolean(subscription.success);
     } catch (subscriptionError) {
-      console.warn(
-        "[Instagram Callback] Webhook subscription failed:",
-        subscriptionError
-      );
+      console.warn("[Callback] Webhook subscription failed:", subscriptionError);
     }
 
     await prisma.instagramAccount.upsert({
@@ -94,17 +133,17 @@ export async function GET(request: NextRequest) {
       create: {
         workspaceId: state.workspaceId,
         instagramId,
-        username: userInfo.username,
-        name: userInfo.name,
-        accessToken: encryptedToken,
+        username,
+        name: pageName,
+        accessToken: encryptedPageToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
       update: {
         workspaceId: state.workspaceId,
-        username: userInfo.username,
-        name: userInfo.name,
-        accessToken: encryptedToken,
+        username,
+        name: pageName,
+        accessToken: encryptedPageToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
@@ -113,10 +152,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard?connected=true`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[Instagram Callback] Error:", err);
-    // The message is the only diagnostic a self-hoster gets for a failed
-    // connect, so persist it alongside the other operational events rather
-    // than leaving it in server logs they may not be able to reach.
+    console.error("[Callback] Error:", err);
     await prisma.operationalEvent
       .create({
         data: {
@@ -130,9 +166,7 @@ export async function GET(request: NextRequest) {
       .catch(() => {});
 
     return NextResponse.redirect(
-      `${baseUrl}/settings?instagram=failed&reason=${encodeURIComponent(
-        message.slice(0, 600)
-      )}`
+      `${baseUrl}/settings?instagram=failed&reason=${encodeURIComponent(message.slice(0, 600))}`
     );
   }
 }

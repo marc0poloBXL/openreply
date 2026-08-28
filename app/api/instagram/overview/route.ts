@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
       ? MAX_POSTS
       : Math.min(requestedCount as number, MAX_POSTS);
 
-    const media = await getAllUserMedia(accessToken, target);
+    const media = await getAllUserMedia(accessToken, target, account.instagramId);
     const truncated = media.length >= MAX_POSTS;
 
     // Likes and comments come free with basic media fields. Views / reach /

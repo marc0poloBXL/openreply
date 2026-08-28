@@ -9,6 +9,9 @@ import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
 const INSTAGRAM_OAUTH_URL = "https://www.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
+const FACEBOOK_OAUTH_URL = "https://www.facebook.com/dialog/oauth";
+const FACEBOOK_TOKEN_URL = "https://graph.facebook.com/oauth/access_token";
+const GRAPH_API_BASE = "https://graph.facebook.com";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
@@ -69,19 +72,106 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
   }
 }
 
+/**
+ * Get the Facebook Login authorization URL.
+ * This gives us a FB user token that works with graph.facebook.com
+ * and allows reading comments on Instagram Business posts.
+ */
 export function getAuthorizationUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_id: requireEnv("INSTAGRAM_APP_ID"),
+    client_id: requireEnv("FACEBOOK_APP_ID"),
     redirect_uri: redirectUri,
     scope:
-      "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
+      "pages_show_list,instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
     response_type: "code",
     state,
   });
 
-  return `${INSTAGRAM_OAUTH_URL}?${params.toString()}`;
+  return `${FACEBOOK_OAUTH_URL}?${params.toString()}`;
 }
 
+/**
+ * Exchange a Facebook Login authorization code for an access token.
+ * Returns a short-lived FB user token.
+ */
+export async function exchangeFbCodeForToken(
+  code: string,
+  redirectUri: string
+): Promise<{ accessToken: string }> {
+  const url = new URL(FACEBOOK_TOKEN_URL);
+  url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+  url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("code", code);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const body = await response.text().catch(() => "Unknown error");
+    throw new Error(`Facebook token exchange failed: ${body.slice(0, 500)}`);
+  }
+
+  const data = await response.json();
+  return { accessToken: data.access_token };
+}
+
+/**
+ * Exchange a short-lived Facebook user token for a long-lived one.
+ */
+export async function exchangeFbLongLivedToken(
+  shortLivedToken: string
+): Promise<{ accessToken: string }> {
+  const url = new URL(FACEBOOK_TOKEN_URL);
+  url.searchParams.set("grant_type", "fb_exchange_token");
+  url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+  url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  url.searchParams.set("fb_exchange_token", shortLivedToken);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const body = await response.text().catch(() => "Unknown error");
+    throw new Error(`Facebook long-lived token exchange failed: ${body.slice(0, 500)}`);
+  }
+
+  const data = await response.json();
+  return { accessToken: data.access_token };
+}
+
+/**
+ * Get the Facebook Pages the user manages and find the one linked to
+ * their Instagram Business account. Returns the page access token.
+ */
+export async function getConnectedPageToken(
+  fbUserToken: string,
+  igUserId: string
+): Promise<{ pageId: string; pageToken: string; pageName: string } | null> {
+  const version = process.env.META_GRAPH_API_VERSION ?? "v25.0";
+
+  // Get the user's pages
+  const pagesUrl = new URL(`${GRAPH_API_BASE}/${version}/me/accounts`);
+  pagesUrl.searchParams.set("access_token", fbUserToken);
+
+  const pagesResp = await fetch(pagesUrl.toString());
+  const pagesData = await pagesResp.json() as { data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string } }> };
+
+  if (!pagesData.data) return null;
+
+  // Find the page connected to our Instagram account
+  for (const page of pagesData.data) {
+    if (page.instagram_business_account?.id === igUserId) {
+      return {
+        pageId: page.id,
+        pageToken: page.access_token,
+        pageName: page.name,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Instagram Business Login: exchange code for token (kept for backward compat).
+ */
 export async function exchangeCodeForToken(
   code: string,
   redirectUri: string

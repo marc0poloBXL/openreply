@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     let reels: InstagramMedia[];
     try {
       const token = decryptToken(account.accessToken);
-      const media = await getUserMedia(token, 25);
+      const media = await getUserMedia(token, 25, account.instagramId);
       reels = media
         .filter(isReel)
         .sort(

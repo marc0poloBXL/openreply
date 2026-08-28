@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   for (const account of accounts) {
     try {
       const token = decryptToken(account.accessToken);
-      const info = await getUserInfo(token);
+      const info = await getUserInfo(token, account.instagramId);
 
       if (typeof info.followers_count !== "number") {
         failures.push({
