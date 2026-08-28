@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { getUserMedia, getRecentMediaComments } from "@/lib/meta/client";
+import { getRecentMediaComments } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { getMetaGraphApiVersion } from "@/lib/env";
 
@@ -33,54 +33,64 @@ export async function GET() {
 
     // Test /me/media
     try {
-      const media = await getUserMedia(accessToken, 5);
-      results.mediaCount = media.length;
-      results.mediaIds = media.map((m: { id: string; media_type?: string; comments_count?: number }) => ({
-        id: m.id,
-        type: m.media_type,
-        comments_count: m.comments_count,
-      }));
+      const version = getMetaGraphApiVersion();
+      const mediaUrl = new URL(`https://graph.instagram.com/${version}/me/media`);
+      mediaUrl.searchParams.set("fields", "id,media_type,media_url,comments_count,caption,timestamp");
+      mediaUrl.searchParams.set("limit", "5");
+      mediaUrl.searchParams.set("access_token", accessToken);
+      const resp = await fetch(mediaUrl.toString());
+      const raw = await resp.json();
+      results.mediaRaw = { status: resp.status, data: raw };
     } catch (e) {
       results.mediaError = e instanceof Error ? e.message : String(e);
     }
 
-    // If we got media, test comments on the first one
-    if (results.mediaIds && Array.isArray(results.mediaIds) && results.mediaIds.length > 0) {
-      const firstMedia = (results.mediaIds[0] as { id: string; comments_count?: number });
-      results.testingMedia = firstMedia;
+    // Test comments on a known media ID (first one from media list)
+    const mediaIds = results.mediaRaw && (results.mediaRaw as Record<string, unknown>).data
+      ? ((results.mediaRaw as Record<string, unknown>).data as Record<string, unknown>).data as Array<{ id: string; comments_count?: number }>
+      : [];
+    if (mediaIds.length > 0) {
+      const firstMedia = mediaIds[0];
+      results.testingMediaId = firstMedia.id;
+      results.testingCommentsCount = firstMedia.comments_count;
 
-      // Try graph.instagram.com
+      // graph.instagram.com — raw
       try {
-        const comments = await getRecentMediaComments(
-          accessToken,
-          firstMedia.id,
-          Date.now() - 30 * 24 * 60 * 60 * 1000
-        );
-        results.instagramGraphComments = {
-          count: comments.length,
-          sample: comments.slice(0, 3),
-        };
+        const version = getMetaGraphApiVersion();
+        const igUrl = new URL(`https://graph.instagram.com/${version}/${firstMedia.id}/comments`);
+        igUrl.searchParams.set("fields", "id,text,timestamp,from{id,username}");
+        igUrl.searchParams.set("access_token", accessToken);
+        const resp = await fetch(igUrl.toString());
+        const raw = await resp.json();
+        results.igCommentsRaw = { status: resp.status, data: raw };
       } catch (e) {
-        results.instagramGraphError = e instanceof Error ? e.message : String(e);
+        results.igCommentsError = e instanceof Error ? e.message : String(e);
       }
 
-      // Try graph.facebook.com for comparison
+      // graph.facebook.com — try with IG token
       try {
         const version = getMetaGraphApiVersion();
         const fbUrl = new URL(`https://graph.facebook.com/${version}/${firstMedia.id}/comments`);
-        fbUrl.searchParams.set("fields", "id,text,timestamp,from");
+        fbUrl.searchParams.set("fields", "id,text,timestamp,from{id,username}");
         fbUrl.searchParams.set("access_token", accessToken);
-
-        const response = await fetch(fbUrl.toString());
-        const data = await response.json();
-        results.facebookGraphComments = {
-          success: !data.error,
-          count: data.data?.length ?? 0,
-          sample: data.data?.slice(0, 3) ?? [],
-          error: data.error,
-        };
+        const resp = await fetch(fbUrl.toString());
+        const raw = await resp.json();
+        results.fbCommentsRaw = { status: resp.status, data: raw };
       } catch (e) {
-        results.facebookGraphError = e instanceof Error ? e.message : String(e);
+        results.fbCommentsError = e instanceof Error ? e.message : String(e);
+      }
+
+      // graph.facebook.com with ig-user-id
+      try {
+        const version = getMetaGraphApiVersion();
+        const fbMediaUrl = new URL(`https://graph.facebook.com/${version}/${account.instagramId}/media`);
+        fbMediaUrl.searchParams.set("fields", "id,comments_count");
+        fbMediaUrl.searchParams.set("access_token", accessToken);
+        const resp = await fetch(fbMediaUrl.toString());
+        const raw = await resp.json();
+        results.fbIdMediaRaw = { status: resp.status, data: raw };
+      } catch (e) {
+        results.fbIdMediaError = e instanceof Error ? e.message : String(e);
       }
     }
   } catch (e) {
