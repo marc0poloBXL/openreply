@@ -16,32 +16,37 @@ export async function GET() {
   if (!account) throw new Error("No account");
 
   const token = decryptToken(account.accessToken);
-  const r: Record<string, unknown> = {};
+  const r: Record<string, unknown> = {
+    username: account.username,
+    connectedAt: account.connectedAt,
+  };
 
-  // Try the comments endpoint with the first post
-  const posts = await (await fetch(`https://graph.instagram.com/v25.0/me/media?fields=id,comments_count&limit=3&access_token=${token}`)).json();
-  r.posts = posts;
+  // Check webhook events from last 2 hours
+  const webhooks = await prisma.webhookEvent.findMany({
+    where: {
+      workspaceId,
+      createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { id: true, object: true, status: true, createdAt: true },
+  });
+  r.recentWebhooks = webhooks;
 
+  // Test: graph.instagram.com comments endpoint in detail
+  const posts = await (await fetch(`https://graph.instagram.com/v25.0/me/media?fields=id,comments_count&limit=5&access_token=${token}`)).json();
   if (posts.data?.length) {
     const mid = posts.data[0].id;
-    r.testMediaId = mid;
-    r.commentsCount = posts.data[0].comments_count;
+    // Try all variants
+    const ig = await fetch(`https://graph.instagram.com/v25.0/${mid}/comments?fields=id,text,timestamp,from{id,username}&access_token=${token}`);
+    r.igComments = await ig.json();
 
-    // Try graph.instagram.com
-    const igResp = await fetch(`https://graph.instagram.com/v25.0/${mid}/comments?access_token=${token}`);
-    r.igRaw = { status: igResp.status, body: await igResp.json() };
+    // Try with fb graph using version that might accept IG token
+    const fb = await fetch(`https://graph.facebook.com/v21.0/${mid}/comments?fields=id,text,created_time,from{id,name}&access_token=${token}`);
+    r.fbV21Comments = await fb.json();
 
-    // Also try with fields
-    const igResp2 = await fetch(`https://graph.instagram.com/v25.0/${mid}/comments?fields=id,text,timestamp,from{id,username}&access_token=${token}`);
-    r.igRaw2 = { status: igResp2.status, body: await igResp2.json() };
-
-    // Try with comment_id instead (maybe need to use FB graph)
-    // Try the FB graph with token
-    const fbResp = await fetch(`https://graph.facebook.com/v25.0/${mid}/comments?access_token=${token}`);
-    r.fbRaw = { status: fbResp.status, body: await fbResp.json() };
-
-    const fbResp2 = await fetch(`https://graph.facebook.com/v25.0/${mid}?fields=id,comments{id,text,from,created_time}&access_token=${token}`);
-    r.fbRaw2 = { status: fbResp2.status, body: await fbResp2.json() };
+    const fb2 = await fetch(`https://graph.facebook.com/v20.0/${mid}/comments?fields=id,text,created_time,from{id,name}&access_token=${token}`);
+    r.fbV20Comments = await fb2.json();
   }
 
   return NextResponse.json({ success: true, data: r });
