@@ -3,6 +3,7 @@ import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getUserMedia, getRecentMediaComments } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
+import { getMetaGraphApiVersion } from "@/lib/env";
 
 export async function GET() {
   const workspaceId = await getCurrentWorkspaceId();
@@ -34,27 +35,52 @@ export async function GET() {
     try {
       const media = await getUserMedia(accessToken, 5);
       results.mediaCount = media.length;
-      results.mediaIds = media.map((m: { id: string; media_type?: string }) => ({ id: m.id, type: m.media_type }));
+      results.mediaIds = media.map((m: { id: string; media_type?: string; comments_count?: number }) => ({
+        id: m.id,
+        type: m.media_type,
+        comments_count: m.comments_count,
+      }));
     } catch (e) {
       results.mediaError = e instanceof Error ? e.message : String(e);
     }
 
     // If we got media, test comments on the first one
     if (results.mediaIds && Array.isArray(results.mediaIds) && results.mediaIds.length > 0) {
+      const firstMedia = (results.mediaIds[0] as { id: string; comments_count?: number });
+      results.testingMedia = firstMedia;
+
+      // Try graph.instagram.com
       try {
         const comments = await getRecentMediaComments(
           accessToken,
-          (results.mediaIds[0] as { id: string }).id,
+          firstMedia.id,
           Date.now() - 30 * 24 * 60 * 60 * 1000
         );
-        results.commentCount = comments.length;
-        results.sampleComments = comments.slice(0, 3).map((c: { id: string; text?: string; from?: { id: string; username?: string } }) => ({
-          id: c.id,
-          text: c.text?.substring(0, 50),
-          from: c.from?.username,
-        }));
+        results.instagramGraphComments = {
+          count: comments.length,
+          sample: comments.slice(0, 3),
+        };
       } catch (e) {
-        results.commentError = e instanceof Error ? e.message : String(e);
+        results.instagramGraphError = e instanceof Error ? e.message : String(e);
+      }
+
+      // Try graph.facebook.com for comparison
+      try {
+        const version = getMetaGraphApiVersion();
+        const fbUrl = new URL(`https://graph.facebook.com/${version}/${firstMedia.id}/comments`);
+        fbUrl.searchParams.set("fields", "id,text,timestamp,from");
+        fbUrl.searchParams.set("access_token", accessToken);
+
+        const response = await fetch(fbUrl.toString());
+        const data = await response.json();
+        results.facebookGraphComments = {
+          success: !data.error,
+          count: data.data?.length ?? 0,
+          sample: data.data?.slice(0, 3) ?? [],
+          error: data.error,
+        };
+      } catch (e) {
+        results.facebookGraphError = e instanceof Error ? e.message : String(e);
       }
     }
   } catch (e) {
