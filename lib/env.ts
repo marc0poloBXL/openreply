@@ -33,6 +33,8 @@ export function getEncryptionKeyHex(): string {
 const INSTAGRAM_OAUTH_ENV = [
   "INSTAGRAM_APP_ID",
   "INSTAGRAM_APP_SECRET",
+  "FACEBOOK_APP_ID",
+  "FACEBOOK_APP_SECRET",
   "ENCRYPTION_KEY",
   "NEXTAUTH_SECRET",
 ] as const;
