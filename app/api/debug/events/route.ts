@@ -19,7 +19,6 @@ export async function GET() {
     select: {
       id: true,
       object: true,
-      entry: true,
       status: true,
       errorMessage: true,
       processedAt: true,
