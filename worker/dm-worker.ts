@@ -31,8 +31,10 @@ void heartbeat();
 const heartbeatTimer = setInterval(() => void heartbeat(), HEARTBEAT_INTERVAL_MS);
 
 async function poll() {
+  console.log("[DM Worker] Polling sweep starting at", new Date().toISOString());
   try {
     await reconcileComments();
+    console.log("[DM Worker] Polling sweep complete");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[DM Worker] Comment reconciliation failed:", message);

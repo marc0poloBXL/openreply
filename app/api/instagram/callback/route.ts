@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
 
     // Step 4: Get the Instagram Business Account ID
     const igAccountsUrl = new URL(`https://graph.facebook.com/${version}/me/accounts`);
-    igAccountsUrl.searchParams.set("fields", "id,name,instagram_business_account{id,username,name}");
+    igAccountsUrl.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username,name}");
     igAccountsUrl.searchParams.set("access_token", longLivedFbToken);
     const accountsResp = await fetch(igAccountsUrl.toString());
     const accountsData = await accountsResp.json() as {
-      data?: Array<{ id: string; name: string; instagram_business_account?: { id: string; username: string; name: string } }>;
+      data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username: string; name: string } }>;
     };
 
     if (!accountsData.data) throw new Error("No Facebook pages found");
@@ -106,15 +106,6 @@ export async function GET(request: NextRequest) {
 
     // Encrypt and store the PAGE access token (this is what we need for API calls)
     const encryptedPageToken = encryptToken(pageToken);
-
-    // Also get the Instagram-specific long-lived token for graph.instagram.com calls
-    const igTokenResp = await fetch(
-      `https://graph.instagram.com/v25.0/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${pageToken}`
-    );
-    const igTokenData = await igTokenResp.json() as { access_token?: string };
-    const igAccessToken = igTokenData.access_token;
-
-    // Store both tokens (page token in the main field, IG token if available)
     const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // ~60 days
 
     let webhookSubscribed = false;

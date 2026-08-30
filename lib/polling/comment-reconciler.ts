@@ -250,8 +250,8 @@ async function recordSweep(
   workspaceId: string,
   stat: SweepStat
 ): Promise<void> {
-  // Only log when something happened or something went wrong.
-  if (stat.enqueued === 0 && stat.errors.length === 0) return;
+  // Always log so we can see sweeps are happening.
+  console.log("[Sweep]", stat.campaign, "enqueued:", stat.enqueued, "matched:", stat.matched, "errors:", stat.errors.length);
 
   await prisma.operationalEvent
     .create({
