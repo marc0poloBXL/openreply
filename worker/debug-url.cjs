@@ -1,34 +1,23 @@
 require("tsx/cjs");
 require("dotenv").config({ path: require("path").resolve(__dirname, "..", ".env") });
 
-const clientId = process.env.FACEBOOK_APP_ID;
-const redirectUri = "https://openreply-zeta-ruby.vercel.app/api/instagram/callback";
+const fbUrl = new URL("https://www.facebook.com/dialog/oauth");
+fbUrl.searchParams.set("client_id", process.env.FACEBOOK_APP_ID);
+fbUrl.searchParams.set("redirect_uri", "https://openreply-zeta-ruby.vercel.app/api/instagram/callback");
+fbUrl.searchParams.set("scope", "pages_show_list instagram_business_basic instagram_business_manage_messages instagram_business_manage_comments instagram_business_manage_insights");
+fbUrl.searchParams.set("response_type", "code");
+fbUrl.searchParams.set("state", "test-123");
 
-// Construct the URL the same way the app does
-const params = new URLSearchParams({
-  client_id: clientId,
-  redirect_uri: redirectUri,
-  scope: "pages_show_list Instagram basic Instagram manage comments Instagram manage messages",
-  response_type: "code",
-  state: "test-state",
-});
+console.log(fbUrl.toString());
 
-const fbUrl = `https://www.facebook.com/dialog/oauth?${params.toString()}`;
-console.log("Facebook Login URL:");
-console.log(fbUrl);
-console.log("\n---");
-console.log("Scope param:", params.get("scope"));
-console.log("Encoded full URL:", fbUrl);
+// Also try the simplified version
+const fbUrl2 = new URL("https://www.facebook.com/dialog/oauth");
+fbUrl2.searchParams.set("client_id", process.env.FACEBOOK_APP_ID);
+fbUrl2.searchParams.set("redirect_uri", "https://openreply-zeta-ruby.vercel.app/api/instagram/callback");
+// Just one scope to isolate
+fbUrl2.searchParams.set("scope", "pages_show_list");
+fbUrl2.searchParams.set("response_type", "code");
+fbUrl2.searchParams.set("state", "test-456");
 
-// Also try the Instagram version
-const igParams = new URLSearchParams({
-  client_id: process.env.INSTAGRAM_APP_ID,
-  redirect_uri: redirectUri,
-  scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
-  response_type: "code",
-  state: "test-state",
-});
-
-const igUrl = `https://www.instagram.com/oauth/authorize?${igParams.toString()}`;
-console.log("\nInstagram Business Login URL:");
-console.log(igUrl);
+console.log("\n---\n");
+console.log(fbUrl2.toString());

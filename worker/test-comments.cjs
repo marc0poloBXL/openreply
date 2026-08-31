@@ -5,7 +5,7 @@ const { prisma } = require("../lib/db/client");
 
 async function main() {
   const acct = await prisma.instagramAccount.findFirst();
-  if (!acct) { console.log("No account found"); return; }
+  if (!acct) { console.log("No account"); return; }
   const key = Buffer.from(process.env.ENCRYPTION_KEY, "hex");
   const combined = Buffer.from(acct.accessToken, "base64");
   const iv = combined.subarray(0, 16);
@@ -14,30 +14,40 @@ async function main() {
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(authTag);
   const token = decipher.update(ciphertext) + decipher.final("utf8");
-  console.log("Token:", token.slice(0, 10) + "...");
 
   const v = "v26.0";
-  // Get posts
-  const mediaResp = await fetch(`https://graph.instagram.com/${v}/me/media?fields=id,caption,timestamp,comments_count&limit=5&access_token=${token}`);
+  const igId = acct.instagramId;
+  const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+
+  // Test: can we read the IG Business Account with an App Access Token?
+  const url1 = `https://graph.facebook.com/${v}/${igId}?fields=id,username,name&access_token=${appToken}`;
+  const r1 = await fetch(url1);
+  const d1 = await r1.json();
+  console.log("IG account via App Token:", d1.error ? "ERROR: " + d1.error.message.slice(0, 80) : "OK: " + d1.username);
+
+  // Test: can we get media with App Token?
+  const url2 = `https://graph.facebook.com/${v}/${igId}/media?fields=id&limit=1&access_token=${appToken}`;
+  const r2 = await fetch(url2);
+  const d2 = await r2.json();
+  console.log("Media via App Token:", d2.error ? "ERROR: " + d2.error.message.slice(0, 80) : "OK: " + (d2.data||[]).length + " posts");
+
+  // Test: Try the Instagram Business ID comments endpoint on graph.facebook.com using our IGAA token
+  // This might work if the IG Business Account has proper permissions
+  const mediaResp = await fetch(`https://graph.instagram.com/${v}/me/media?fields=id&limit=1&access_token=${token}`);
   const mediaData = await mediaResp.json();
-  if (mediaData.error) { console.log("Media error:", mediaData.error.message); return; }
+  if (mediaData.data && mediaData.data[0]) {
+    const postId = mediaData.data[0].id;
 
-  for (const p of (mediaData.data || [])) {
-    console.log(`\nPost ${p.id} (comments_count: ${p.comments_count})`);
+    // Test: Comments via Instagram Graph API with media-user-id parameter
+    const url3 = `https://graph.instagram.com/${v}/${postId}/comments?fields=id,text,timestamp,username&access_token=${token}`;
+    const r3 = await fetch(url3);
+    const d3 = await r3.json();
+    console.log(`\nPost ${postId} - Comments via ig.com:`, d3.error ? "ERROR: " + d3.error.message.slice(0, 80) : (d3.data||[]).length + " comments");
 
-    // Test 1: simple fields without from
-    const url1 = `https://graph.instagram.com/${v}/${p.id}/comments?fields=id,text,timestamp&access_token=${token}`;
-    const r1 = await fetch(url1);
-    const d1 = await r1.json();
-    if (d1.error) console.log("  Test 1 (no from):", d1.error.message);
-    else console.log("  Test 1 (no from):", (d1.data || []).length, "comments");
-
-    // Test 2: check if we can get the media on graph.facebook.com (maybe it works with IGAA there too?)
-    const url2 = `https://graph.facebook.com/${v}/${p.id}/comments?fields=id,text,timestamp,from&access_token=${token}&limit=5`;
-    const r2 = await fetch(url2);
-    const d2 = await r2.json();
-    if (d2.error) console.log("  Test 2 (fb.com):", d2.error.message);
-    else console.log("  Test 2 (fb.com):", (d2.data || []).length, "comments");
+    // Check if 'username' field exists instead of 'from'
+    if (d3.data && d3.data.length > 0) {
+      console.log("Sample comment:", JSON.stringify(d3.data[0]));
+    }
   }
 
   await prisma.$disconnect();
