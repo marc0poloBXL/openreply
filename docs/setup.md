@@ -95,7 +95,7 @@ Copy `.env.example` to `.env` for local work, or set these in Vercel and Railway
 | `RESEND_API_KEY` | Resend key. Login is email magic links only, so without this nobody can sign in. |
 | `EMAIL_FROM` | A sender on a domain you verified in Resend. The placeholder will not deliver. |
 | `EMAIL_SERVER` | Optional. An SMTP URL, for example `smtps://login%40example.com:password@mail.example.com:465`. Set it to send magic links through your own mail server instead of Resend; then `RESEND_API_KEY` is not needed. URL-encode special characters in the user and password (`@` becomes `%40`). Port 465 with `smtps://` is implicit TLS, port 587 with `smtp://` is STARTTLS. |
-| `META_GRAPH_API_VERSION` | Graph API version, for example `v25.0`. |
+| `META_GRAPH_API_VERSION` | Graph API version, for example `v26.0`. |
 | `INSTAGRAM_APP_ID` | From the Meta app, see Step 6. |
 | `INSTAGRAM_APP_SECRET` | From the Meta app. |
 | `FACEBOOK_APP_SECRET` | From the Meta app. |

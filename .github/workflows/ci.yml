@@ -49,7 +49,7 @@ jobs:
           ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           RESEND_API_KEY: re_test
           EMAIL_FROM: "InstaReply <login@example.com>"
-          META_GRAPH_API_VERSION: v25.0
+          META_GRAPH_API_VERSION: v26.0
           INSTAGRAM_APP_ID: test
           INSTAGRAM_APP_SECRET: test
           FACEBOOK_APP_SECRET: test
