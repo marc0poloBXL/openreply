@@ -73,21 +73,20 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
 }
 
 /**
- * Get the Facebook Login authorization URL.
- * This gives us a FB user token that works with graph.facebook.com
- * and allows reading comments on Instagram Business posts.
+ * Get the Instagram Business Login authorization URL.
+ * This gives us an IGAA token that works with graph.instagram.com.
  */
 export function getAuthorizationUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_id: requireEnv("FACEBOOK_APP_ID"),
+    client_id: requireEnv("INSTAGRAM_APP_ID"),
     redirect_uri: redirectUri,
     scope:
-      "pages_show_list,instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
+      "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
     response_type: "code",
     state,
   });
 
-  return `${FACEBOOK_OAUTH_URL}?${params.toString()}`;
+  return `${INSTAGRAM_OAUTH_URL}?${params.toString()}`;
 }
 
 /**
