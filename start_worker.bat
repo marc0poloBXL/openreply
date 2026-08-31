@@ -1,22 +1,25 @@
 @echo off
-echo ===== OpenReply Worker Fix =====
+echo ===== OpenReply DM Worker (PM2) =====
 echo.
 
-echo Step 1: Fixing .env file...
-findstr /C:"FACEBOOK_APP_ID" .env >nul 2>&1
-if errorlevel 1 (
-  echo FACEBOOK_APP_ID=4628128514174903>> .env
-  echo [OK] Added FACEBOOK_APP_ID to .env
-) else (
-  echo [OK] FACEBOOK_APP_ID already in .env
-)
-
-echo.
-echo Step 2: Generating Prisma client...
+echo Step 1: Generating Prisma client...
 call npx prisma generate
 
 echo.
-echo ===== Starting Worker =====
+echo Step 2: Checking if worker is already running...
+call pm2 show openreply-worker >nul 2>&1
+if %errorlevel% equ 0 (
+  echo [OK] Worker is already running. Restarting...
+  call pm2 restart openreply-worker
+) else (
+  echo [OK] Starting worker via PM2...
+  call pm2 start ecosystem.config.js
+)
+
 echo.
-call npm run worker
+echo ===== Worker started =====
+echo.
+pm2 list
+echo.
+echo The worker will run in the background. Close this window.
 pause

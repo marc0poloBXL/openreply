@@ -25,12 +25,33 @@ export async function POST(request: NextRequest) {
   const instagramAccountId =
     typeof body.instagramAccountId === "string" ? body.instagramAccountId : null;
 
-  await prisma.instagramAccount.deleteMany({
+  const accountFilter = {
+    workspaceId: context.workspaceId,
+    ...(instagramAccountId ? { id: instagramAccountId } : {}),
+  };
+
+  // Before deleting, check for active campaigns linked to this account.
+  // Prisma's onDelete: Cascade would silently delete them all, which is
+  // almost never what the user intended.
+  const campaignCount = await prisma.automation.count({
     where: {
-      workspaceId: context.workspaceId,
-      ...(instagramAccountId ? { id: instagramAccountId } : {}),
+      instagramAccount: accountFilter,
+      isActive: true,
     },
   });
+
+  if (campaignCount > 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Cannot disconnect — this account has ${campaignCount} active campaign(s). Delete or pause them first, then try again.`,
+        data: { activeCampaigns: campaignCount },
+      },
+      { status: 400 }
+    );
+  }
+
+  await prisma.instagramAccount.deleteMany({ where: accountFilter });
 
   return NextResponse.json({ success: true });
 }

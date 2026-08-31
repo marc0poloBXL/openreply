@@ -75,17 +75,22 @@ export default function SettingsPage() {
   }
 
   async function disconnectInstagram(instagramAccountId: string) {
-    if (!confirm("Disconnect Instagram? Campaigns for this account will stop sending DMs.")) {
+    if (!confirm("Disconnect Instagram account? Active campaigns will block this — pause or delete them first.")) {
       return;
     }
 
     setBusy(`disconnect:${instagramAccountId}`);
-    await fetch("/api/instagram/disconnect", {
+    const res = await fetch("/api/instagram/disconnect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ instagramAccountId }),
     });
-    window.location.reload();
+    const payload = await res.json();
+    if (!payload.success) {
+      alert(payload.error ?? "Failed to disconnect");
+    } else {
+      window.location.reload();
+    }
   }
 
   async function inviteMember(event: React.FormEvent) {
