@@ -6,7 +6,6 @@ import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
 import { getLongLivedToken, subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
-  exchangeCodeForToken,
   exchangeFbCodeForToken,
   exchangeFbLongLivedToken,
   getConnectedPageToken,
@@ -47,86 +46,73 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
 
-    // Step 1: Exchange Instagram auth code for Instagram Business token
-    const { accessToken: igToken, userId } = await exchangeCodeForToken(
+    // Step 1: Exchange Facebook auth code for a short-lived FB user token
+    const { accessToken: shortLivedToken } = await exchangeFbCodeForToken(
       code,
       redirectUri
     );
 
-    // Step 2: Exchange for a long-lived Instagram token
-    const { accessToken: longLivedToken } = await getLongLivedToken(igToken);
+    // Step 2: Exchange for a long-lived FB user token
+    const { accessToken: longLivedFbToken } = await exchangeFbLongLivedToken(shortLivedToken);
 
-    // Step 3: Also try to get a Facebook Page token for comment reading
-    // (This may fail if FB Login isn't configured — gracefully fall back)
-    let finalToken = longLivedToken;
-    let pageToken: string | null = null;
-    let fbAccountLinked = false;
+    // Step 3: Get user info from the FB token to find the Instagram account
+    const version = process.env.META_GRAPH_API_VERSION ?? "v26.0";
+    const meResp = await fetch(
+      `https://graph.facebook.com/${version}/me?fields=id,name&access_token=${longLivedFbToken}`
+    );
+    const meData = await meResp.json();
+    if (!meData.id) throw new Error("Failed to get Facebook user info");
 
-    try {
-      // First get a short-lived FB token
-      const { accessToken: fbShortToken } = await exchangeFbCodeForToken(
-        code,
-        redirectUri
+    // Step 4: Get the Instagram Business Account ID
+    const igAccountsUrl = new URL(`https://graph.facebook.com/${version}/me/accounts`);
+    igAccountsUrl.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username,name}");
+    igAccountsUrl.searchParams.set("access_token", longLivedFbToken);
+    const accountsResp = await fetch(igAccountsUrl.toString());
+    const accountsData = await accountsResp.json() as {
+      data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username: string; name: string } }>;
+    };
+
+    if (!accountsData.data) throw new Error("No Facebook pages found");
+
+    // Find the page with an Instagram Business account connected
+    let instagramId: string;
+    let username: string;
+    let pageId: string;
+    let pageToken: string;
+    let pageName: string;
+
+    const connectedPage = accountsData.data.find(p => p.instagram_business_account);
+    if (!connectedPage || !connectedPage.instagram_business_account) {
+      throw new Error(
+        "Your Instagram Business account must be linked to a Facebook Page. " +
+        "Go to Instagram Settings → Account → Linked Accounts → Facebook to connect it."
       );
-      // Exchange for long-lived
-      const { accessToken: fbLongToken } = await exchangeFbLongLivedToken(fbShortToken);
-
-      // Find connected Instagram Business page
-      const version = process.env.META_GRAPH_API_VERSION ?? "v25.0";
-      const pagesResp = await fetch(
-        `https://graph.facebook.com/${version}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${fbLongToken}`
-      );
-      const pagesData = await pagesResp.json() as { data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username: string } }> };
-
-      if (pagesData.data) {
-        for (const page of pagesData.data) {
-          if (page.instagram_business_account?.id === userId) {
-            pageToken = page.access_token;
-            fbAccountLinked = true;
-            break;
-          }
-        }
-      }
-    } catch (fbErr) {
-      console.warn("[Callback] FB Page token fetch failed (non-fatal):", fbErr);
     }
 
-    if (pageToken) {
-      // Use the Page token — it works with graph.facebook.com for both media AND comments
-      finalToken = pageToken;
+    instagramId = connectedPage.instagram_business_account.id;
+    username = connectedPage.instagram_business_account.username;
+    pageId = connectedPage.id;
+    pageToken = connectedPage.access_token;
+    pageName = connectedPage.name;
+
+    // Check if account already exists
+    const connection = await canConnectInstagramAccount({
+      workspaceId: state.workspaceId,
+      instagramId,
+    });
+    if (!connection.allowed) {
+      return NextResponse.redirect(`${baseUrl}/settings?instagram=already_connected`);
     }
 
-    // Step 4: Get user info
-    const version = process.env.META_GRAPH_API_VERSION ?? "v25.0";
-    let instagramId = userId;
-    let username = "";
-
-    if (pageToken && fbAccountLinked) {
-      // We have a Page token — find the Instagram user info
-      const meResp = await fetch(
-        `https://graph.facebook.com/${version}/${userId}?fields=username,name,profile_picture_url&access_token=${pageToken}`
-      );
-      const meData = await meResp.json();
-      instagramId = meData.id || userId;
-      username = meData.username || meData.name || "";
-    } else {
-      // Fall back to Instagram token
-      const meResp = await fetch(
-        `https://graph.instagram.com/${version}/me?fields=user_id,username&access_token=${longLivedToken}`
-      );
-      const meData = await meResp.json();
-      instagramId = meData.user_id || userId;
-      username = meData.username || "";
-    }
-
-    const encryptedToken = encryptToken(finalToken);
-    const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+    // Encrypt and store the PAGE access token (this is what we need for API calls)
+    const encryptedPageToken = encryptToken(pageToken);
+    const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // ~60 days
 
     let webhookSubscribed = false;
     try {
       const subscription = await subscribeInstagramAccountToWebhooks(
         instagramId,
-        finalToken
+        pageToken
       );
       webhookSubscribed = Boolean(subscription.success);
     } catch (subscriptionError) {
@@ -139,16 +125,16 @@ export async function GET(request: NextRequest) {
         workspaceId: state.workspaceId,
         instagramId,
         username,
-        name: username,
-        accessToken: encryptedToken,
+        name: pageName,
+        accessToken: encryptedPageToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
       update: {
         workspaceId: state.workspaceId,
         username,
-        name: username,
-        accessToken: encryptedToken,
+        name: pageName,
+        accessToken: encryptedPageToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
