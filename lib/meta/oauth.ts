@@ -81,8 +81,7 @@ export function getAuthorizationUrl(redirectUri: string, state: string): string 
   const params = new URLSearchParams({
     client_id: requireEnv("FACEBOOK_APP_ID"),
     redirect_uri: redirectUri,
-    scope:
-      "pages_show_list,instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
+    scope: "pages_show_list",
     response_type: "code",
     state,
   });
