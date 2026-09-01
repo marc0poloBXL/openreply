@@ -130,7 +130,10 @@ model InstagramAccount {
   instagramId       String   @unique
   username          String
   name              String?
+  /// IGAA token from Instagram Business Login (works with graph.instagram.com)
   accessToken       String
+  /// EA/Page token from Facebook Login (works with graph.facebook.com for comments)
+  pageToken         String?
   tokenExpiresAt    DateTime?
   webhookSubscribed Boolean  @default(false)
   connectedAt       DateTime @default(now())

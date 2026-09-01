@@ -39,9 +39,72 @@ const MESSAGES: Record<string, { tone: Tone; title: string; detail: string }> = 
 
 export function InstagramConnectNotice() {
   const searchParams = useSearchParams();
-  const status = searchParams.get("instagram");
+  const instagramStatus = searchParams.get("instagram");
+  const facebookStatus = searchParams.get("facebook");
+  const fbConnected = searchParams.get("facebook_connected");
 
-  if (!status) return null;
+  // Facebook connected successfully
+  if (fbConnected === "true") {
+    return (
+      <Notice tone="success" title="Facebook Page connected!">
+        <p>
+          Your Facebook Page is now linked. The system can now read comments on
+          your Instagram posts via the Facebook Graph API.
+        </p>
+      </Notice>
+    );
+  }
+
+  if (!instagramStatus && !facebookStatus) return null;
+  const status = facebookStatus || instagramStatus;
+  const isFacebook = !!facebookStatus;
+
+  if (isFacebook && status === "failed") {
+    const reason = searchParams.get("reason");
+    return (
+      <Notice tone="error" title="Facebook Page connection failed">
+        <p>
+          Facebook accepted the login but the page could not be linked. Make sure
+          your Facebook Page has an Instagram Business account connected.
+        </p>
+        {reason && (
+          <p className="mt-2 font-mono text-xs break-words opacity-80">
+            {reason}
+          </p>
+        )}
+      </Notice>
+    );
+  }
+
+  if (isFacebook && status === "denied") {
+    return (
+      <Notice tone="warning" title="Facebook Login cancelled">
+        <p>
+          You declined the permission prompt. The Facebook Page is needed to read
+          comments on your Instagram posts.
+        </p>
+      </Notice>
+    );
+  }
+
+  if (isFacebook && status === "invalid") {
+    return (
+      <Notice tone="error" title="Facebook Login expired">
+        <p>
+          The login link was missing or older than 10 minutes. Start a fresh
+          Facebook Page connection attempt.
+        </p>
+      </Notice>
+    );
+  }
+
+  if (isFacebook && status === "forbidden") {
+    return (
+      <Notice tone="error" title="Not permitted">
+        <p>Only workspace owners and admins can connect a Facebook Page.</p>
+      </Notice>
+    );
+  }
 
   if (status === "misconfigured") {
     const missing = (searchParams.get("missing") ?? "")
@@ -95,7 +158,9 @@ export function InstagramConnectNotice() {
     );
   }
 
-  const known = MESSAGES[status];
+  // Only instagram statuses reach here — facebook statuses return above
+  if (!instagramStatus) return null;
+  const known = MESSAGES[instagramStatus];
   if (!known) return null;
 
   return (

@@ -6,8 +6,7 @@ import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
 import { subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
-  exchangeFbCodeForToken,
-  exchangeFbLongLivedToken,
+  exchangeCodeForToken,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
@@ -45,39 +44,33 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
 
-    // Step 1: Exchange Facebook auth code for a short-lived FB user token
-    const { accessToken: shortLivedToken } = await exchangeFbCodeForToken(
-      code,
-      redirectUri
-    );
+    // Step 1: Exchange Instagram auth code for an IGAA token
+    const { accessToken: igaaToken, userId: igUserId } =
+      await exchangeCodeForToken(code, redirectUri);
 
-    // Step 2: Exchange for a long-lived FB user token
-    const { accessToken: longLivedFbToken } = await exchangeFbLongLivedToken(shortLivedToken);
-
-    // Step 3: Get the Instagram Business Account connected to the user's pages
     const version = process.env.META_GRAPH_API_VERSION ?? "v26.0";
-    const igAccountsUrl = new URL(`https://graph.facebook.com/${version}/me/accounts`);
-    igAccountsUrl.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username,name}");
-    igAccountsUrl.searchParams.set("access_token", longLivedFbToken);
-    const accountsResp = await fetch(igAccountsUrl.toString());
-    const accountsData = (await accountsResp.json()) as {
-      data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username: string; name: string } }>;
+
+    // Step 2: Get the Instagram Business Account details
+    const meUrl = new URL(`https://graph.instagram.com/${version}/me`);
+    meUrl.searchParams.set("fields", "user_id,username,name,account_type,media_count");
+    meUrl.searchParams.set("access_token", igaaToken);
+    const meResp = await fetch(meUrl.toString());
+    const meData = (await meResp.json()) as {
+      user_id?: string;
+      username?: string;
+      name?: string;
+      account_type?: string;
     };
 
-    if (!accountsData.data) throw new Error("No Facebook pages found");
-
-    const connectedPage = accountsData.data.find((p) => p.instagram_business_account);
-    if (!connectedPage || !connectedPage.instagram_business_account) {
+    if (!meData.username) {
       throw new Error(
-        "Your Instagram Business account must be linked to a Facebook Page. " +
-          "Go to Instagram Settings → Account → Linked Accounts → Facebook to connect it."
+        `Could not get Instagram account details: ${JSON.stringify(meData)}`
       );
     }
 
-    const instagramId = connectedPage.instagram_business_account.id;
-    const username = connectedPage.instagram_business_account.username;
-    const pageToken = connectedPage.access_token;
-    const pageName = connectedPage.name;
+    const instagramId = meData.user_id || igUserId;
+    const username = meData.username;
+    const pageName = meData.name || username;
 
     // Check if account already exists
     const connection = await canConnectInstagramAccount({
@@ -88,16 +81,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/settings?instagram=already_connected`);
     }
 
-    // Encrypt and store the PAGE access token (starts with EA — works with graph.facebook.com)
-    const encryptedPageToken = encryptToken(pageToken);
+    // Encrypt and store the IGAA token
+    const encryptedToken = encryptToken(igaaToken);
     const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
 
     let webhookSubscribed = false;
     try {
-      const subscription = await subscribeInstagramAccountToWebhooks(instagramId, pageToken);
+      // Try webhook subscribe (requires Page token, so may fail with IGAA)
+      const subscription = await subscribeInstagramAccountToWebhooks(
+        instagramId,
+        igaaToken
+      );
       webhookSubscribed = Boolean(subscription.success);
     } catch (subscriptionError) {
-      console.warn("[Callback] Webhook subscription failed:", subscriptionError);
+      console.warn("[Callback] Webhook subscription skipped:", subscriptionError);
     }
 
     await prisma.instagramAccount.upsert({
@@ -107,7 +104,7 @@ export async function GET(request: NextRequest) {
         instagramId,
         username,
         name: pageName,
-        accessToken: encryptedPageToken,
+        accessToken: encryptedToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
@@ -115,12 +112,13 @@ export async function GET(request: NextRequest) {
         workspaceId: state.workspaceId,
         username,
         name: pageName,
-        accessToken: encryptedPageToken,
+        accessToken: encryptedToken,
         tokenExpiresAt,
         webhookSubscribed,
       },
     });
 
+    // After successful connection, redirect user with link to also connect Facebook Page
     return NextResponse.redirect(`${baseUrl}/dashboard?connected=true`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

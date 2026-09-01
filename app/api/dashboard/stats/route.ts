@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         instagramId: true,
         tokenExpiresAt: true,
         webhookSubscribed: true,
+        pageToken: true,
       },
     }),
     prisma.instagramAccount.findMany({

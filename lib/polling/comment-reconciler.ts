@@ -80,6 +80,7 @@ export async function reconcileComments(): Promise<void> {
           instagramId: true,
           username: true,
           accessToken: true,
+          pageToken: true,
         },
       },
     },
@@ -135,8 +136,10 @@ async function sweepCampaign(
     errors: [],
   };
 
-  // Decrypt the account token once per sweep.
+  // Decrypt the account token. Use the Page token (EA) for comment reading
+  // on graph.facebook.com, fall back to IGAA token for graph.instagram.com.
   let accessToken = tokenCache.get(account.id);
+  let pageToken: string | null = tokenCache.get(`page:${account.id}`) ?? null;
   if (accessToken === undefined) {
     try {
       accessToken = decryptToken(account.accessToken);
@@ -145,10 +148,29 @@ async function sweepCampaign(
     }
     tokenCache.set(account.id, accessToken);
   }
-  if (!accessToken) {
+  if (pageToken === null && "pageToken" in account && account.pageToken) {
+    try {
+      pageToken = decryptToken((account as any).pageToken);
+    } catch {
+      pageToken = null;
+    }
+    // Use page token as the primary token for comment reading
+    if (pageToken) {
+      tokenCache.set(`page:${account.id}`, pageToken);
+    }
+  }
+
+  // For comment reading, prefer the Page token (works with graph.facebook.com).
+  // Fall back to the IGAA token (only shows self-comments on graph.instagram.com).
+  const commentToken = pageToken || accessToken;
+
+  if (!commentToken) {
     stat.errors.push("Failed to decrypt access token");
     return stat;
   }
+
+  // For listing recent media, still use IGAA token (works with graph.instagram.com)
+  const mediaToken = accessToken!;
 
   // Which media this campaign covers: its own post, or the recent feed if it
   // matches any post.
@@ -157,7 +179,7 @@ async function sweepCampaign(
     mediaIds.push(automation.postId);
   } else if (automation.matchAnyPost) {
     try {
-      const media = await getUserMedia(accessToken, RECENT_MEDIA_LIMIT, account.instagramId);
+      const media = await getUserMedia(mediaToken, RECENT_MEDIA_LIMIT, account.instagramId);
       mediaIds.push(...media.map((m) => m.id));
     } catch (error) {
       stat.errors.push(`Media list: ${errMessage(error)}`);
@@ -170,7 +192,7 @@ async function sweepCampaign(
   for (const mediaId of mediaIds) {
     let comments: InstagramComment[];
     try {
-      comments = await getRecentMediaComments(accessToken, mediaId, sinceMs);
+      comments = await getRecentMediaComments(commentToken, mediaId, sinceMs);
     } catch (error) {
       stat.errors.push(`Comments ${mediaId}: ${errMessage(error)}`);
       continue;

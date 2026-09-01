@@ -15,6 +15,7 @@ interface SettingsData {
     instagramId: string;
     tokenExpiresAt: string | null;
     webhookSubscribed: boolean;
+    pageToken: string | null;
   } | null;
   instagramAccounts: Array<
     AccountOption & {
@@ -52,6 +53,8 @@ export default function SettingsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pageTokenInput, setPageTokenInput] = useState("");
+  const [pageTokenMsg, setPageTokenMsg] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
@@ -90,6 +93,24 @@ export default function SettingsPage() {
       alert(payload.error ?? "Failed to disconnect");
     } else {
       window.location.reload();
+    }
+  }
+
+  async function savePageToken(instagramAccountId: string) {
+    setPageTokenMsg(null);
+    setBusy("page-token");
+    const res = await fetch("/api/instagram/page-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instagramAccountId, pageToken: pageTokenInput }),
+    });
+    const payload = await res.json();
+    setBusy(null);
+    if (payload.success) {
+      setPageTokenMsg("Token saved! Refreshing...");
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      setPageTokenMsg(`Error: ${payload.error ?? "Unknown"}`);
     }
   }
 
@@ -176,6 +197,72 @@ export default function SettingsPage() {
             </span>
           </div>
 
+          {/* Facebook Page connection status */}
+          {accounts.length > 0 && data?.instagramAccount && (
+            <div className="flex flex-col gap-3 py-3 border-b border-border">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Facebook Page</p>
+                  <p className="text-xs text-muted mt-0.5">
+                    Required to read other users&apos; comments and use webhooks.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                      data?.instagramAccount?.pageToken
+                        ? "bg-success/10 text-success"
+                        : "bg-warning/10 text-warning"
+                    }`}
+                  >
+                    {data?.instagramAccount?.pageToken ? "Connected" : "Not connected"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Manual token input — visible when not connected */}
+              {!data?.instagramAccount?.pageToken && (
+                <div className="mt-2 space-y-2 rounded border border-border bg-surface/50 p-3">
+                  <p className="text-xs font-medium text-muted">
+                    Option A: Connect via browser (may need app review)
+                  </p>
+                  <a
+                    href="/api/instagram/connect/facebook"
+                    className="inline-block px-3 py-1.5 rounded text-xs font-medium border border-accent text-accent hover:bg-accent/10"
+                  >
+                    Connect Facebook Page
+                  </a>
+                  <div className="border-t border-border pt-2 mt-2">
+                    <p className="text-xs font-medium text-muted mb-1">
+                      Option B: Paste a Page access token from Graph API Explorer
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={pageTokenInput}
+                        onChange={(e) => setPageTokenInput(e.target.value)}
+                        placeholder="EAAC... paste your Page token here"
+                        className="flex-1 rounded border border-border bg-surface px-3 py-1.5 text-xs text-foreground outline-none focus:border-accent/40 font-mono"
+                      />
+                      <button
+                        onClick={() => savePageToken(data.instagramAccount!.id)}
+                        disabled={busy === "page-token" || !pageTokenInput.trim()}
+                        className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                      >
+                        {busy === "page-token" ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                    {pageTokenMsg && (
+                      <p className="mt-1 text-xs" style={{ color: pageTokenMsg.startsWith("Error") ? "var(--color-error, #ef4444)" : "var(--color-success, #22c55e)" }}>
+                        {pageTokenMsg}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3 py-3">
             {accounts.length === 0 && (
               <p className="text-sm text-muted">
@@ -213,13 +300,26 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-border flex gap-3">
+        <div className="mt-6 pt-4 border-t border-border flex flex-wrap gap-3">
           <a
             href="/api/instagram/connect"
             className="px-4 py-2 rounded text-sm font-medium transition-colors bg-accent text-white hover:bg-accent-hover"
           >
             {accounts.length > 0 ? "Connect another account" : "Connect Instagram"}
           </a>
+          {accounts.length > 0 && !data?.instagramAccount?.pageToken && (
+            <a
+              href="/api/instagram/connect/facebook"
+              className="px-4 py-2 rounded text-sm font-medium transition-colors border border-accent text-accent hover:bg-accent/10"
+            >
+              Connect Facebook Page (for comments)
+            </a>
+          )}
+          {accounts.length > 0 && data?.instagramAccount?.pageToken && (
+            <span className="px-4 py-2 rounded text-sm font-medium text-muted bg-surface/70">
+              ✓ Facebook Page linked
+            </span>
+          )}
         </div>
       </section>
 
