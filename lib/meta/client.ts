@@ -470,7 +470,7 @@ export async function getRecentMediaComments(
   // Use Facebook Graph API — graph.instagram.com does NOT return other
   // users' comments for Business accounts. With a Page access token,
   // graph.facebook.com returns all comments.
-  const first = new URL(`${facebookGraphBase()}/${mediaId}/comments`);
+  const first = new URL(`${baseUrlForToken(accessToken)}/${mediaId}/comments`);
   first.searchParams.set("fields", "id,text,timestamp,from,replies{from}");
   first.searchParams.set("order", "reverse_chronological");
   first.searchParams.set("limit", "50");
