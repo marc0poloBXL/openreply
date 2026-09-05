@@ -26,10 +26,14 @@ export async function POST() {
   }
 
   try {
-    const accessToken = decryptToken(account.accessToken);
+    // Use Page token when available (works with graph.facebook.com),
+    // fall back to IGAA token for graph.instagram.com
+    const token = account.pageToken
+      ? decryptToken(account.pageToken)
+      : decryptToken(account.accessToken);
     const result = await subscribeInstagramAccountToWebhooks(
       account.instagramId,
-      accessToken
+      token
     );
 
     await prisma.instagramAccount.update({
