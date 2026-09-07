@@ -1,18 +1,25 @@
 /**
  * Token Helper — Server-Side Only
  *
- * Instead of OAuth redirect (which fails due to missing redirect URI),
- * this page lets you paste your existing token from Graph API Explorer.
- * The server then calls /me/accounts to find the Page token.
+ * Paste a short-lived token from Graph API Explorer.
+ * This page exchanges it for a long-lived token (60 days), finds the
+ * connected page, stores the page token in the database, and subscribes
+ * webhooks — all in one step.
  * No CORS issues, no OAuth redirects.
  */
 
 const APP_ID = process.env.FACEBOOK_APP_ID || "1051360407668084";
+const APP_SECRET = process.env.FACEBOOK_APP_SECRET || "b2708ce0c790783fbf27c0dfcc0e1459";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "61594011424463";
+const BM_ID = "2052016095704629";
+const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
 const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
 const VERIFY_TOKEN = "stoiczodiac-webhook-2026";
+
+import { encryptToken, exchangeFbLongLivedToken } from "@/lib/meta/oauth";
+import { prisma } from "@/lib/db/client";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -22,72 +29,116 @@ export async function GET(req: Request) {
     return new Response(htmlPage("Get Facebook Page Token",
       `<h2>Get a Page Token for @stoiczodiac</h2>
        <p><strong>Step 1:</strong> Go to the Graph API Explorer and get your User Token:</p>
-       <p><a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">https://developers.facebook.com/tools/explorer/${APP_ID}/</a></p>
+       <p><a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" class="btn-link">https://developers.facebook.com/tools/explorer/${APP_ID}/</a></p>
        <ul>
-         <li>Make sure the dropdown says "User Token" (not Page Token)</li>
-         <li>Permissions should include: <code>pages_show_list</code>, <code>pages_read_engagement</code></li>
-         <li>Click "Generate Access Token" and authorize</li>
+         <li>Make sure the dropdown says <strong>"User Token"</strong> (not Page Token)</li>
+         <li>Add these permissions: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code></li>
+         <li>Click "Generate Access Token" and authorize all the popups</li>
+         <li>Click "Add" next to permissions to add them</li>
        </ul>
        <p><strong>Step 2:</strong> Paste the token (EAA...) here:</p>
        <form method="get" action="">
          <input type="text" name="token" placeholder="Paste EAA... token here"
                 style="width:100%;padding:10px;border:1px solid #ccc;border-radius:6px;font-family:monospace;font-size:13px;box-sizing:border-box;">
-         <button type="submit" style="background:#1877F2;color:white;border:none;padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer;margin-top:10px;">
-           🔍 Get Page Token
-         </button>
-       </form>`
+         <button type="submit" class="btn">🔍 Get Page Token</button>
+       </form>
+       <p style="color:#666;font-size:13px;margin-top:16px;">
+         ⚡ The system will exchange your token for a 60-day token and store it automatically.
+         You only need to do this when the token expires (every ~2 months).
+       </p>`
     ), { headers: { "content-type": "text/html" } });
   }
 
   try {
-    // Step 1: Try /me/accounts with the user's token directly
+    // Step 1: Exchange for long-lived token
+    let longLivedToken: string;
+    try {
+      const result = await exchangeFbLongLivedToken(userToken.trim());
+      longLivedToken = result.accessToken;
+    } catch (e) {
+      return new Response(htmlPage("⚠️ Token Exchange Failed",
+        `<p class="error">Could not exchange the token for a long-lived one.</p>
+         <p>This usually means the token is already expired or invalid.</p>
+         <p>Please go to the <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a> and generate a fresh token.</p>
+         <p><a href="?" style="color:#1877F2;">← Try again with a fresh token</a></p>`
+      ), { headers: { "content-type": "text/html" } });
+    }
+
+    // Step 2: Try /me/accounts first
     const accountsResp = await fetch(
-      `https://graph.facebook.com/${API_VER}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(userToken)}`
+      `https://graph.facebook.com/${API_VER}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(longLivedToken)}`
     );
     const accountsData = await accountsResp.json();
 
-    if (accountsData.error) {
-      return new Response(htmlPage("❌ API Error",
-        `<p class="error">${accountsData.error.message}</p>
-         <p>Type: ${accountsData.error.type} (Code: ${accountsData.error.code})</p>
-         <p style="margin-top:12px;">
-           <a href="?" style="color:#1877F2;">← Try again</a>
-         </p>`
+    let pageInfo: { pageId: string; pageToken: string; pageName: string } | null = null;
+
+    if (accountsData.data && accountsData.data.length > 0) {
+      pageInfo = findStoicPage(accountsData.data);
+    }
+
+    // Step 3: Try Business Manager if /me/accounts was empty
+    if (!pageInfo) {
+      const bmResp = await fetch(
+        `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(longLivedToken)}`
+      );
+      const bmData = await bmResp.json();
+      if (bmData.data && bmData.data.length > 0) {
+        pageInfo = findStoicPage(bmData.data);
+      }
+    }
+
+    if (!pageInfo) {
+      return new Response(htmlPage("⚠️ Page Not Found",
+        `<p class="error">Could not find "Stoic Zodiac" page. Make sure your token has access to the page.</p>
+         <p>Try visiting the <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a> again, and add <code>business_management</code> permission.</p>
+         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
       ), { headers: { "content-type": "text/html" } });
     }
 
-    if (!accountsData.data || accountsData.data.length === 0) {
-      // /me/accounts returned empty — try via Business Manager
-      return new Response(htmlPage("⚠️ No Pages via User Token",
-        `<p class="error">The Facebook API returned no pages for your user token.</p>
-         <p>This usually means the page is under a Business Manager.</p>
-         <p>Let me try the Business Manager approach instead... <a href="?token=${encodeURIComponent(userToken)}&bm=true" style="color:#1877F2;">Click here to try via Business Manager</a></p>`
-      ), { headers: { "content-type": "text/html" } });
-    }
+    // Step 4: Encrypt and store in database
+    const encrypted = encryptToken(pageInfo.pageToken.trim());
+    const expiresAt = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000);
 
-    // Find the Stoic Zodiac page
-    const stoicPage = accountsData.data.find((p: any) =>
-      p.instagram_business_account?.id === IG_ID ||
-      p.id === PAGE_ID ||
-      p.name?.toLowerCase().includes("stoic")
-    );
+    await prisma.instagramAccount.update({
+      where: { id: IG_ACCOUNT_DB_ID },
+      data: { pageToken: encrypted, tokenExpiresAt: expiresAt },
+    });
 
-    if (!stoicPage) {
-      let list = accountsData.data.map((p: any) =>
-        `"${p.name}"${p.instagram_business_account ? ` → IG: @${p.instagram_business_account.username}` : ""}`
-      ).join("<br>");
-      return new Response(htmlPage("⚠️ Stoic Zodiac Not Found",
-        `<p>Could not find "Stoic Zodiac" in your pages. Available pages:</p>
-         <p>${list}</p>
-         <p style="margin-top:12px;">
-           <a href="?" style="color:#1877F2;">← Try a different token</a>
-         </p>`
-      ), { headers: { "content-type": "text/html" } });
-    }
+    // Step 5: Subscribe webhooks
+    let subscribed = false;
+    try {
+      const igSub = await fetch(
+        `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: pageInfo.pageToken,
+            subscribed_fields: "comments,messages",
+          }),
+        }
+      );
+      const igResult = await igSub.json();
+      subscribed = Boolean(igResult.success || igResult.id);
+      await prisma.instagramAccount.update({
+        where: { id: IG_ACCOUNT_DB_ID },
+        data: { webhookSubscribed: subscribed },
+      });
+    } catch { /* non-critical */ }
 
-    // Success! Show the page token
-    const pageToken = stoicPage.access_token;
-    return renderSuccess(pageToken, stoicPage.name, userToken);
+    return new Response(htmlPage("✅ Done!",
+      `<div class="success">
+         <p><strong>✅ Page token stored!</strong> (valid until ~${expiresAt.toLocaleDateString()})</p>
+         <p><strong>✅ Webhook:</strong> ${subscribed ? "Subscribed!" : "⚠️ Not subscribed"}</p>
+         <p><strong>✅ Page:</strong> ${pageInfo.pageName}</p>
+       </div>
+       <p>Your DM automation is now fully configured. Go back to OpenReply and check the inbox.</p>
+       <hr>
+       <p style="font-size:13px;color:#666;">
+         The long-lived token will be auto-refreshed by the cron job before it expires.
+         You won't need to do this again for ~60 days.
+       </p>`
+    ), { headers: { "content-type": "text/html" } });
 
   } catch (e: any) {
     return new Response(htmlPage("❌ Error",
@@ -98,154 +149,21 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // Same logic as GET but from form submission
   const formData = await req.formData();
   const userToken = formData.get("token")?.toString().trim() || "";
-  const useBM = formData.get("bm") === "true";
-
-  if (!userToken) {
-    return new Response(htmlPage("❌ Missing Token",
-      `<p class="error">No token provided. <a href="?" style="color:#1877F2;">← Try again</a></p>`
-    ), { headers: { "content-type": "text/html" } });
-  }
-
-  try {
-    if (useBM) {
-      // Try Business Manager approach
-      const BM_ID = "5180791675279566";
-      const bmResp = await fetch(
-        `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(userToken)}`
-      );
-      const bmData = await bmResp.json();
-
-      if (bmData.error) {
-        return new Response(htmlPage("❌ Business Manager Access Denied",
-          `<p class="error">${bmData.error.message}</p>
-           <p style="margin-top:12px;">Your token doesn't have <code>business_management</code> permission.</p>
-           <p><strong>Option 1:</strong> In the Graph API Explorer, add <code>business_management</code> to your token permissions, then try again.</p>
-           <p><strong>Option 2:</strong> Use the Settings page in OpenReply to paste the token directly.</p>
-           <p><a href="?" style="color:#1877F2;">← Try again with a different token</a></p>`
-        ), { headers: { "content-type": "text/html" } });
-      }
-
-      if (!bmData.data || bmData.data.length === 0) {
-        return new Response(htmlPage("⚠️ No Pages in Business Manager",
-          `<p class="error">No pages found in Business Manager ${BM_ID}.</p>
-           <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
-        ), { headers: { "content-type": "text/html" } });
-      }
-
-      const stoicPage = bmData.data.find((p: any) =>
-        p.instagram_business_account?.id === IG_ID ||
-        p.id === PAGE_ID ||
-        p.name?.toLowerCase().includes("stoic")
-      );
-
-      if (!stoicPage) {
-        let list = bmData.data.map((p: any) =>
-          `"${p.name}"${p.instagram_business_account ? ` → IG: @${p.instagram_business_account.username}` : ""}`
-        ).join("<br>");
-        return new Response(htmlPage("⚠️ Not Found in BM",
-          `<p>Could not find "Stoic Zodiac" in Business Manager pages:</p>
-           <p>${list}</p>
-           <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
-        ), { headers: { "content-type": "text/html" } });
-      }
-
-      return renderSuccess(stoicPage.access_token, stoicPage.name, userToken);
-    }
-
-    // Regular /me/accounts approach
-    const accountsResp = await fetch(
-      `https://graph.facebook.com/${API_VER}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(userToken)}`
-    );
-    const accountsData = await accountsResp.json();
-
-    // ... same logic as GET
-    if (accountsData.error) {
-      return new Response(htmlPage("❌ API Error",
-        `<p class="error">${accountsData.error.message}</p>
-         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
-      ), { headers: { "content-type": "text/html" } });
-    }
-
-    if (!accountsData.data || accountsData.data.length === 0) {
-      return new Response(htmlPage("⚠️ No Pages",
-        `<p class="error">No pages found.</p>
-         <form method="post" action="">
-           <input type="hidden" name="token" value="${encodeURIComponent(userToken)}">
-           <input type="hidden" name="bm" value="true">
-           <button type="submit" style="background:#1877F2;color:white;border:none;padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer;">
-             🔍 Try via Business Manager instead
-           </button>
-         </form>
-         <p><a href="?" style="color:#1877F2;">← Try a different token</a></p>`
-      ), { headers: { "content-type": "text/html" } });
-    }
-
-    const stoicPage = accountsData.data.find((p: any) =>
-      p.instagram_business_account?.id === IG_ID ||
-      p.id === PAGE_ID ||
-      p.name?.toLowerCase().includes("stoic")
-    );
-
-    if (!stoicPage) {
-      let list = accountsData.data.map((p: any) =>
-        `"${p.name}"${p.instagram_business_account ? ` → IG: @${p.instagram_business_account.username}` : ""}`
-      ).join("<br>");
-      return new Response(htmlPage("⚠️ Not Found",
-        `<p>Available pages:</p><p>${list}</p>
-         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
-      ), { headers: { "content-type": "text/html" } });
-    }
-
-    return renderSuccess(stoicPage.access_token, stoicPage.name, userToken);
-
-  } catch (e: any) {
-    return new Response(htmlPage("❌ Error",
-      `<p class="error">${e.message}</p>
-       <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
-    ), { headers: { "content-type": "text/html" } });
-  }
+  const url = new URL(req.url);
+  url.searchParams.set("token", userToken);
+  return GET(new Request(url.toString()));
 }
 
-async function renderSuccess(pageToken: string, pageName: string, userToken: string) {
-  // Also subscribe webhooks while we have the Page token
-  let subscribed = false;
-  try {
-    // Per-account subscription
-    const igSub = await fetch(
-      `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          access_token: pageToken,
-          subscribed_fields: "comments,messages",
-        }),
-      }
-    );
-    const igResult = await igSub.json();
-    subscribed = Boolean(igResult.success || igResult.id);
-  } catch (e) {
-    // Non-critical
+function findStoicPage(pages: any[]) {
+  for (const p of pages) {
+    if (p.instagram_business_account?.id === IG_ID || p.id === PAGE_ID || p.name?.toLowerCase().includes("stoic")) {
+      return { pageId: p.id, pageToken: p.access_token, pageName: p.name };
+    }
   }
-
-  return new Response(htmlPage("✅ Token Found!",
-    `<div class="success">
-       <p><strong>✅ Page found:</strong> ${pageName}</p>
-       <p><strong>Webhook subscription:</strong> ${subscribed ? "✅ Subscribed!" : "⚠️ Not subscribed yet"}</p>
-     </div>
-     <p><strong>Copy this Page Token (EA...):</strong></p>
-     <pre id="token" style="user-select:all;word-break:break-all;font-size:12px;">${pageToken}</pre>
-     <button onclick="navigator.clipboard.writeText(document.getElementById('token').textContent).then(() => this.textContent='✅ Copied!')"
-             style="background:#1877F2;color:white;border:none;padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer;">
-       📋 Copy Token
-     </button>
-     <hr style="margin:20px 0;border:none;border-top:1px solid #ddd;">
-     <p style="color:#666;font-size:14px;">
-       Now paste this in the chat so I can store it and finish setting everything up.
-     </p>`
-  ), { headers: { "content-type": "text/html" } });
+  return null;
 }
 
 function htmlPage(title: string, body: string): string {
@@ -262,8 +180,12 @@ function htmlPage(title: string, body: string): string {
     .success { background: #e8f5e9; color: #0a8a0a; padding: 12px; border-radius: 6px; }
     pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
     code { font-size: 13px; }
+    .btn-link { color:#1877F2; }
+    .btn { background:#1877F2;color:white;border:none;padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer;margin-top:10px; }
     hr { border: none; border-top: 1px solid #eee; }
     input, button { font-size: 14px; }
+    ul { padding-left: 20px; }
+    li { margin: 8px 0; }
   </style>
 </head>
 <body>
