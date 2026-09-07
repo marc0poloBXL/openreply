@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const accessToken = decryptToken(account.accessToken);
+    const accessToken = decryptToken((account as any).pageToken || account.accessToken);
 
     // `all=true` paginates the full library (for the campaign post picker);
     // otherwise return a single recent page.

@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const accessToken = decryptToken(account.accessToken);
+    const accessToken = decryptToken((account as any).pageToken || account.accessToken);
 
     // `count` is either "all" or a positive integer (last N posts).
     const countParam = request.nextUrl.searchParams.get("count");

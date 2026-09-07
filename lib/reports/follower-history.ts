@@ -174,7 +174,7 @@ export async function ensureFollowerHistory(
   account: { id: string; instagramId: string },
   accessToken: string
 ): Promise<number | null> {
-  const info = await getUserInfo(accessToken);
+  const info = await getUserInfo(accessToken, account.instagramId);
   const followers = info.followers_count;
   if (typeof followers !== "number") return null;
 

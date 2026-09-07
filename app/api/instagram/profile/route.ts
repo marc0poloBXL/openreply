@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const token = decryptToken(account.accessToken);
+    const token = decryptToken((account as any).pageToken || account.accessToken);
     const info = await getUserInfo(token, account.instagramId);
     return NextResponse.json(
       {
