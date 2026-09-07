@@ -23,8 +23,10 @@
 
 ### Instagram Account
 - **@stoiczodiac**: IG ID `17841438935909153`
-- Connected to OpenReply with IGAA token (via Instagram Business Login)
-- Linked to "Stoic Zodiac" Facebook Page (required for comment reading)
+- Connected to OpenReply with IGAA token (via Instagram Business Login) — **expired Sep 5, needs fresh**
+- IGAA token is the PRIMARY token for: DMs, conversations, media listing, user info, follower history
+- Page token (stored) is a SEPARATE token for graph.facebook.com — requires IG↔FB page link to work
+- **IG↔FB link status**: ❌ NOT CONFIRMED — /me/accounts shows no linked IG account
 
 ### Token Storage
 - `InstagramAccount.accessToken`: IGAA token (encrypted) — works with `graph.instagram.com`
@@ -34,16 +36,26 @@
 ### Code Fixes Applied
 1. `lib/meta/client.ts:473` — changed `facebookGraphBase()` to `baseUrlForToken(accessToken)` so IGAA tokens route to `graph.instagram.com` and EA tokens to `graph.facebook.com`
 2. `app/api/instagram/resubscribe/route.ts` — uses Page token (when available) instead of IGAA token for webhook subscription
+3. **2026-09-07: Reverted pageToken preference** — all messaging/media routes now use IGAA (accessToken) again. The pageToken can't access IG resources because the IG account is not linked to a FB page. Added `/api/auth/igaa-token` for IGAA token refresh.
 
 ### Remaining Issue
 - ~~Webhook subscription still shows "pending"~~ ✅ **RESOLVED 2026-09-06**
 - ~~Need to subscribe `17841438935909153/subscribed_apps` with the Page token~~ ✅ App-level webhook subscription active
 - ~~Need a fresh Page Access Token~~ ✅ Generated via Business Manager "marc jelen" (id: 2052016095704629) owned_pages
-- ~~Store token in DB~~ ✅ Encrypted in `InstagramAccount.pageToken`, expires 2026-11-06
+- ~~Store token in DB~~ ✅ Encrypted in `InstagramAccount.pageToken`, expires 2026-11-01
+- **IMPORTANT: IGAA token is expired** — the token that powers DMs, inbox, and media listing was last valid 2026-09-05. It cannot be refreshed after expiry. A fresh IGAA token must be pasted at `/api/auth/igaa-token` (see below).
+- **@stoiczodiac is NOT linked to a Facebook Page** — our `/me/accounts` check found no `instagram_business_account` link. This means the page token (stored in DB) cannot access IG resources. To fix: in Instagram app → Account Center → Linked accounts → Facebook, connect to the "Stoic Zodiac" page. Blocking comment reading via graph.facebook.com but NOT blocking DM/conversation flows (those use IGAA on graph.instagram.com).
 - App-level webhook (1051360407668084/subscriptions) active for instagram → comments, messages → callback URL: https://openreply-zeta-ruby.vercel.app/api/webhook
 - Verify token: `stoiczodiac-webhook-2026`
 
-### Token Refresh Process (when token expires in 60 days)
+### Token Refresh Process
+
+**IGAA token (powers DMs, inbox, media)** — when it expires (~60 days):
+1. Go to https://openreply-zeta-ruby.vercel.app/api/auth/igaa-token
+2. Click the link to Facebook's developer dashboard → generate a new token (starts with IGAA...)
+3. Paste it on the helper page → it's exchanged to long-lived and stored automatically
+
+**Page token (for graph.facebook.com — comment reading)** — when it expires:
 Run `fb_token_helper.mjs` locally — it starts a local server, prints a Facebook Login URL, handles OAuth, stores the new token. To avoid OAuth redirect issues, set app to Development mode temporarily or use the deployed token-helper at `/api/auth/token-helper` with a token from Graph API Explorer including `business_management` scope.
 
 ### Business Managers
