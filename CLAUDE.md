@@ -1,1 +1,52 @@
 @AGENTS.md
+
+## Problem Solving Guidelines
+- Never modify code without first isolating the exact cause of the failure.
+- If a solution fails, revert the changes entirely before trying a different approach.
+- Always ask for user confirmation before performing major refactors.
+
+## Instagram DM Automation Setup (completed 2026-09-05)
+
+### Accounts & Apps
+- **Meta App**: `stoiczodiac-dm` (ID: `1051360407668084`) — LIVE/PUBLISHED
+- **Dev App (old)**: `stoicZodiac` (ID: `2817110661980046`) — In Development, no longer used
+- **Live App (old)**: `stoiczodiac` (ID: `4628128514174903`) — has Instagram Business Login for webhooks
+- **Instagram App**: ID `2616058292165458` (separate app for IGAA token exchange)
+- **Business Manager**: ID `5180791675279566`
+- **System User "bot"**: ID `61594008092430`
+- **Facebook User (Marc Jelen)**: ID `4585334288457714` / `4599239443733865`
+
+### Facebook Pages
+- **Miami4Home**: ID `1112026815491700` — linked to miami4home Instagram
+- **miamirealinfo**: ID unknown — linked to miamirealinfo Instagram
+- **Stoic Zodiac**: ID `61594011424463` — linked to @stoiczodiac Instagram (created 2026-09-05)
+
+### Instagram Account
+- **@stoiczodiac**: IG ID `17841438935909153`
+- Connected to OpenReply with IGAA token (via Instagram Business Login)
+- Linked to "Stoic Zodiac" Facebook Page (required for comment reading)
+
+### Token Storage
+- `InstagramAccount.accessToken`: IGAA token (encrypted) — works with `graph.instagram.com`
+- `InstagramAccount.pageToken`: EA/Page token (encrypted) — works with `graph.facebook.com`
+- Vercel env `FACEBOOK_APP_ID`=`1051360407668084`, `FACEBOOK_APP_SECRET`=stored as Secret
+
+### Code Fixes Applied
+1. `lib/meta/client.ts:473` — changed `facebookGraphBase()` to `baseUrlForToken(accessToken)` so IGAA tokens route to `graph.instagram.com` and EA tokens to `graph.facebook.com`
+2. `app/api/instagram/resubscribe/route.ts` — uses Page token (when available) instead of IGAA token for webhook subscription
+
+### Remaining Issue
+- ~~Webhook subscription still shows "pending"~~ ✅ **RESOLVED 2026-09-06**
+- ~~Need to subscribe `17841438935909153/subscribed_apps` with the Page token~~ ✅ App-level webhook subscription active
+- ~~Need a fresh Page Access Token~~ ✅ Generated via Business Manager "marc jelen" (id: 2052016095704629) owned_pages
+- ~~Store token in DB~~ ✅ Encrypted in `InstagramAccount.pageToken`, expires 2026-11-06
+- App-level webhook (1051360407668084/subscriptions) active for instagram → comments, messages → callback URL: https://openreply-zeta-ruby.vercel.app/api/webhook
+- Verify token: `stoiczodiac-webhook-2026`
+
+### Token Refresh Process (when token expires in 60 days)
+Run `fb_token_helper.mjs` locally — it starts a local server, prints a Facebook Login URL, handles OAuth, stores the new token. To avoid OAuth redirect issues, set app to Development mode temporarily or use the deployed token-helper at `/api/auth/token-helper` with a token from Graph API Explorer including `business_management` scope.
+
+### Business Managers
+- "Marc" (5180791675279566) — has Miami4Home page
+- "miamirealinfo" (9824014651061253) — has Miamirealinfo page  
+- "marc jelen" (2052016095704629) — has **Stoic Zodiac** page (this is where the page token comes from)

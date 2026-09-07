@@ -288,7 +288,10 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
     let accessToken: string;
     try {
-      accessToken = decryptToken(automation.instagramAccount.accessToken);
+      // Prefer pageToken (EAA) for graph.facebook.com endpoints.
+      accessToken = decryptToken(
+        (automation.instagramAccount as any).pageToken || automation.instagramAccount.accessToken
+      );
     } catch {
       await prisma.dmLog.upsert({
         where: {
@@ -732,7 +735,10 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   let accessToken: string;
   try {
-    accessToken = decryptToken(automation.instagramAccount.accessToken);
+    // Prefer pageToken for graph.facebook.com endpoints.
+    accessToken = decryptToken(
+      (automation.instagramAccount as any).pageToken || automation.instagramAccount.accessToken
+    );
   } catch {
     return;
   }
@@ -904,7 +910,9 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
 
   let accessToken: string;
   try {
-    accessToken = decryptToken(automation.instagramAccount.accessToken);
+    accessToken = decryptToken(
+      (automation.instagramAccount as any).pageToken || automation.instagramAccount.accessToken
+    );
   } catch {
     return;
   }
@@ -1019,7 +1027,9 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
 
     let accessToken: string;
     try {
-      accessToken = decryptToken(automation.instagramAccount.accessToken);
+      accessToken = decryptToken(
+        (automation.instagramAccount as any).pageToken || automation.instagramAccount.accessToken
+      );
     } catch {
       await prisma.dmLog.upsert({
         where: {
