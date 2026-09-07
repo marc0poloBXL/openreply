@@ -11,20 +11,70 @@ import {
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
 
+/** Known account row for @stoiczodiac, used in token-refresh mode. */
+const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const error = request.nextUrl.searchParams.get("error");
   const state = verifyOAuthState(request.nextUrl.searchParams.get("state"));
   const baseUrl = getBaseUrl();
+  const isTokenRefresh = state?.mode === "token-refresh";
 
   if (error) {
-    return NextResponse.redirect(`${baseUrl}/settings?instagram=denied`);
+    const dest = isTokenRefresh
+      ? `${baseUrl}/api/auth/igaa-token?error=denied`
+      : `${baseUrl}/settings?instagram=denied`;
+    return NextResponse.redirect(dest);
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(`${baseUrl}/settings?instagram=invalid`);
+    const dest = isTokenRefresh
+      ? `${baseUrl}/api/auth/igaa-token?error=invalid`
+      : `${baseUrl}/settings?instagram=invalid`;
+    return NextResponse.redirect(dest);
   }
 
+  // Token-refresh mode skips session checks — just update our known account.
+  if (isTokenRefresh) {
+    try {
+      const redirectUri = `${baseUrl}/api/instagram/callback`;
+      const { accessToken: igaaToken } = await exchangeCodeForToken(code, redirectUri);
+
+      // Extend to long-lived
+      const version = process.env.META_GRAPH_API_VERSION ?? "v26.0";
+      let longToken = igaaToken;
+      let expiresIn = 60 * 24 * 60 * 60;
+      try {
+        const exchangeUrl = new URL(`https://graph.instagram.com/${version}/access_token`);
+        exchangeUrl.searchParams.set("grant_type", "ig_exchange_token");
+        exchangeUrl.searchParams.set("client_secret", process.env.INSTAGRAM_APP_SECRET || "");
+        exchangeUrl.searchParams.set("access_token", igaaToken);
+        const exResp = await fetch(exchangeUrl);
+        const exData = await exResp.json();
+        if (exData.access_token) {
+          longToken = exData.access_token;
+          expiresIn = typeof exData.expires_in === "number" ? exData.expires_in : expiresIn;
+        }
+      } catch { /* use short-lived */ }
+
+      const encrypted = encryptToken(longToken);
+      const expiresAt = new Date(Date.now() + expiresIn * 1000);
+      await prisma.instagramAccount.update({
+        where: { id: IG_ACCOUNT_DB_ID },
+        data: { accessToken: encrypted, tokenExpiresAt: expiresAt },
+      });
+
+      return NextResponse.redirect(`${baseUrl}/api/auth/igaa-token?success=true`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      return NextResponse.redirect(
+        `${baseUrl}/api/auth/igaa-token?error=${encodeURIComponent(msg)}`
+      );
+    }
+  }
+
+  // Normal connect flow — requires session.
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.redirect(`${baseUrl}/login`);
@@ -44,9 +94,8 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
 
-    // Step 1: Exchange Instagram auth code for an IGAA token
-    const { accessToken: igaaToken, userId: igUserId } =
-      await exchangeCodeForToken(code, redirectUri);
+    // Exchange code for IGAA token
+    const { accessToken: igaaToken, userId: igUserId } = await exchangeCodeForToken(code, redirectUri);
 
     const version = process.env.META_GRAPH_API_VERSION ?? "v26.0";
 
@@ -74,7 +123,7 @@ export async function GET(request: NextRequest) {
 
     // Check if account already exists
     const connection = await canConnectInstagramAccount({
-      workspaceId: state.workspaceId,
+      workspaceId: state.workspaceId!,
       instagramId,
     });
     if (!connection.allowed) {
@@ -100,7 +149,7 @@ export async function GET(request: NextRequest) {
     await prisma.instagramAccount.upsert({
       where: { instagramId },
       create: {
-        workspaceId: state.workspaceId,
+        workspaceId: state.workspaceId!,
         instagramId,
         username,
         name: pageName,
@@ -109,7 +158,7 @@ export async function GET(request: NextRequest) {
         webhookSubscribed,
       },
       update: {
-        workspaceId: state.workspaceId,
+        workspaceId: state.workspaceId!,
         username,
         name: pageName,
         accessToken: encryptedToken,

@@ -18,8 +18,9 @@ const AUTH_TAG_LENGTH = 16;
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 interface OAuthStatePayload {
-  workspaceId: string;
+  workspaceId?: string;
   ts: number;
+  mode?: "token-refresh" | string;
 }
 
 function base64UrlEncode(value: string): string {
@@ -43,6 +44,14 @@ export function createOAuthState(workspaceId: string): string {
   return `${payload}.${signState(payload)}`;
 }
 
+/** State for a token-refresh OAuth — no workspaceId, used by /api/auth/igaa-token. */
+export function createTokenRefreshState(): string {
+  const payload = base64UrlEncode(
+    JSON.stringify({ mode: "token-refresh", ts: Date.now() })
+  );
+  return `${payload}.${signState(payload)}`;
+}
+
 export function verifyOAuthState(state: string | null): OAuthStatePayload | null {
   if (!state) return null;
 
@@ -62,9 +71,10 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
 
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as OAuthStatePayload;
-    if (!parsed.workspaceId || Date.now() - parsed.ts > STATE_MAX_AGE_MS) {
-      return null;
-    }
+    // Token-refresh mode doesn't need workspaceId, but is still signed+time-gated.
+    if (Date.now() - parsed.ts > STATE_MAX_AGE_MS) return null;
+    if (parsed.mode === "token-refresh") return parsed;
+    if (!parsed.workspaceId) return null;
 
     return parsed;
   } catch {
