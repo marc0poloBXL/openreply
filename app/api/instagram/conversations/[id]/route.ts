@@ -43,14 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteProps) {
 
   try {
     const accessToken = decryptToken(account.accessToken);
-    let pageToken: string | null = null;
-    try {
-      if ("pageToken" in account && account.pageToken) {
-        pageToken = decryptToken(account.pageToken);
-      }
-    } catch { /* page token decryption failed — ignore */ }
-
-    const raw = await getConversationMessages(pageToken || accessToken, conversationId);
+    const raw = await getConversationMessages(accessToken, conversationId);
 
     // The API returns newest-first; reverse to read top-to-bottom.
     const messages: ThreadMessage[] = raw

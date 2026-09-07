@@ -47,14 +47,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const accessToken = decryptToken(account.accessToken);
-    let pageToken: string | null = null;
-    try {
-      if ("pageToken" in account && account.pageToken) {
-        pageToken = decryptToken(account.pageToken);
-      }
-    } catch { /* page token decryption failed — ignore */ }
-
-    const raw = await getConversations(pageToken || accessToken, account.instagramId);
+    const raw = await getConversations(accessToken, account.instagramId);
 
     const conversations: ConversationListItem[] = raw.map((c) => {
       const participants = c.participants?.data ?? [];
@@ -141,15 +134,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const accessToken = decryptToken(account.accessToken);
-    let pageToken: string | null = null;
-    try {
-      if ("pageToken" in account && account.pageToken) {
-        pageToken = decryptToken(account.pageToken);
-      }
-    } catch { /* ignore */ }
-
     const result = await sendDirectMessage(
-      pageToken || accessToken,
+      accessToken,
       account.instagramId,
       body.recipientId,
       text
