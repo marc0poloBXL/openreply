@@ -148,15 +148,14 @@ export async function POST(request: Request) {
     }
   );
   const linkData = (await linkRes.json()) as StepEntry;
-  linkingSteps["1_link"] = linkData;
-
   const linkErr = linkData.error as StepEntry | undefined;
   if (linkData.success || linkData.id) {
     linked = true;
   } else if (linkErr && linkErr.code === 100 && linkErr.error_subcode === 33) {
-    linkingSteps["1_link"].note =
+    linkData.note =
       "⚠️ Page exists but token may not have admin access. Try the manual approach below.";
   }
+  linkingSteps["1_link"] = linkData;
 
   // Verify
   const verifyRes = await fetch(
@@ -164,11 +163,11 @@ export async function POST(request: Request) {
   );
   const verifyData = (await verifyRes.json()) as StepEntry;
   const igBiz = verifyData.instagram_business_account as StepEntry | undefined;
-  linkingSteps["2_verify"] = verifyData;
   if (igBiz && String(igBiz.id) === IG_ID) {
-    linkingSteps["2_verify"].note = "✅ SUCCESS! @stoiczodiac is linked!";
+    verifyData.note = "✅ SUCCESS! @stoiczodiac is linked!";
     linked = true;
   }
+  linkingSteps["2_verify"] = verifyData;
 
   // If still not linked, provide manual Account Center path
   if (!linked) {
