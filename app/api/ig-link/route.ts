@@ -39,16 +39,17 @@ export async function GET() {
   }
 
   // Step 2: Discover page identity via token's /me
+  let tokenMe: Record<string, unknown> = {};
   if (pageToken) {
     const meRes = await fetch(
       `https://graph.facebook.com/${API_VERSION}/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
     );
-    const me = await meRes.json();
-    steps["2_token_me"] = me;
-    if (me.id) {
-      discoveredPageId = me.id;
-      steps["2_token_me"].note = `This token is for page "${me.name}" (ID: ${me.id})`;
+    tokenMe = await meRes.json() as Record<string, unknown>;
+    if (tokenMe.id) {
+      discoveredPageId = String(tokenMe.id);
+      tokenMe.note = `This token is for page "${tokenMe.name}" (ID: ${tokenMe.id})`;
     }
+    steps["2_token_me"] = tokenMe;
   }
 
   const pageId = discoveredPageId;
