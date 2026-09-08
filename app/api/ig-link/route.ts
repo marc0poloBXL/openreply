@@ -41,32 +41,45 @@ export async function GET() {
     };
   }
 
-  // Step 2: POST /{ig-id}/owner
+  // Step 2: List pages this token can access
+  if (pageToken) {
+    const pagesRes = await fetch(
+      `https://graph.facebook.com/${API_VERSION}/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}&limit=50`
+    );
+    const pages = await pagesRes.json();
+    steps["2_pages"] = pages.data?.map((p: Record<string, unknown>) => ({
+      id: p.id,
+      name: p.name,
+      igLinked: p.instagram_business_account || null,
+    })) || pages;
+  }
+
+  // Step 3: POST /{ig-id}/owner
   if (pageToken) {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${IG_ID}/owner`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: pageToken, page_id: PAGE_ID }),
     });
-    steps["2_owner"] = await res.json();
+    steps["3_owner"] = await res.json();
   }
 
-  // Step 3: POST /{page-id}/instagram_accounts
+  // Step 4: POST /{page-id}/instagram_accounts
   if (pageToken) {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${PAGE_ID}/instagram_accounts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
     });
-    steps["3_instagram_accounts"] = await res.json();
+    steps["4_instagram_accounts"] = await res.json();
   }
 
-  // Step 4: Verify — check page for linked IG
+  // Step 5: Verify — check page for linked IG
   if (pageToken) {
     const checkRes = await fetch(
       `https://graph.facebook.com/${API_VERSION}/${PAGE_ID}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
     );
-    steps["4_verify"] = await checkRes.json();
+    steps["5_verify"] = await checkRes.json();
   }
 
   return NextResponse.json(results);
