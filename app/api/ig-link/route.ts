@@ -39,17 +39,16 @@ export async function GET() {
   }
 
   // Step 2: Discover page identity via token's /me
-  let tokenMe: Record<string, unknown> = {};
   if (pageToken) {
     const meRes = await fetch(
       `https://graph.facebook.com/${API_VERSION}/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
     );
-    tokenMe = await meRes.json() as Record<string, unknown>;
-    if (tokenMe.id) {
-      discoveredPageId = String(tokenMe.id);
-      tokenMe.note = `This token is for page "${tokenMe.name}" (ID: ${tokenMe.id})`;
+    const me = (await meRes.json()) as Record<string, unknown>;
+    if (me.id) {
+      discoveredPageId = String(me.id);
+      me.note = `This token is for page "${me.name}" (ID: ${me.id})`;
     }
-    steps["2_token_me"] = tokenMe;
+    steps["2_token_me"] = me;
   }
 
   const pageId = discoveredPageId;
@@ -59,13 +58,13 @@ export async function GET() {
     const pageRes = await fetch(
       `https://graph.facebook.com/${API_VERSION}/${pageId}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
     );
-    const pageData = await pageRes.json();
-    steps["3_page_info"] = pageData;
+    const pageData = (await pageRes.json()) as Record<string, unknown>;
     if (pageData.instagram_business_account) {
-      steps["3_page_info"].note = `✅ Page already linked to IG: @${pageData.instagram_business_account.username}`;
+      pageData.note = `✅ Page already linked to IG: @${(pageData.instagram_business_account as Record<string, unknown>).username}`;
     } else {
-      steps["3_page_info"].note = "❌ Page has no linked IG account yet — attempting to link...";
+      pageData.note = "❌ Page has no linked IG account yet — attempting to link...";
     }
+    steps["3_page_info"] = pageData;
   }
 
   // Step 4: Try POST /{ig-id}/owner (link IG to page via IG account)
@@ -93,11 +92,11 @@ export async function GET() {
     const verifyRes = await fetch(
       `https://graph.facebook.com/${API_VERSION}/${pageId}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
     );
-    const verifyData = await verifyRes.json();
-    steps["6_verify"] = verifyData;
-    if (verifyData.instagram_business_account?.id === IG_ID) {
-      steps["6_verify"].note = "✅ SUCCESS: @stoiczodiac is now linked to the Facebook page!";
+    const verifyData = (await verifyRes.json()) as Record<string, unknown>;
+    if ((verifyData.instagram_business_account as Record<string, unknown>)?.id === IG_ID) {
+      verifyData.note = "✅ SUCCESS: @stoiczodiac is now linked to the Facebook page!";
     }
+    steps["6_verify"] = verifyData;
   }
 
   return NextResponse.json({
