@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
             ${results.linked ? '<p class="success">@stoiczodiac is now linked to the Stoic Zodiac page! Comments will work via the page token.</p>' : ''}
             <pre>${JSON.stringify(results, null, 2)}</pre>
           </div>
-          ${results.manualSteps ? `<div class="card"><h2>Manual Steps</h2><ol>${results.manualSteps.map(s => `<li>${s}</li>`).join('')}</ol></div>` : ''}
+          ${results.manualSteps ? `<div class="card"><h2>Manual Steps</h2><ol>${(results.manualSteps as string[]).map(s => `<li>${s}</li>`).join('')}</ol></div>` : ''}
           <p><a href="/api/ig-link">← Back</a></p>
         `),
         { headers: { "Content-Type": "text/html" } }
