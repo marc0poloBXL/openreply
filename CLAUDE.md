@@ -43,7 +43,7 @@
 - ~~Need to subscribe `17841438935909153/subscribed_apps` with the Page token~~ ✅ App-level webhook subscription active
 - ~~Need a fresh Page Access Token~~ ✅ Generated via Business Manager "marc jelen" (id: 2052016095704629) owned_pages
 - ~~Store token in DB~~ ✅ Encrypted in `InstagramAccount.pageToken`, expires 2026-11-01
-- **IMPORTANT: IGAA token is expired** — the token that powers DMs, inbox, and media listing was last valid 2026-09-05. It cannot be refreshed after expiry. A fresh IGAA token must be pasted at `/api/auth/igaa-token` (see below).
+- ~~**IMPORTANT: IGAA token is expired** — the token that powers DMs, inbox, and media listing was last valid 2026-09-05. It cannot be refreshed after expiry. A fresh IGAA token must be pasted at `/api/auth/igaa-token` (see below).~~ ✅ **RENEWED 2026-09-08** via OAuth — valid ~60 days
 - **@stoiczodiac is NOT linked to a Facebook Page** — our `/me/accounts` check found no `instagram_business_account` link. This means the page token (stored in DB) cannot access IG resources. To fix: in Instagram app → Account Center → Linked accounts → Facebook, connect to the "Stoic Zodiac" page. Blocking comment reading via graph.facebook.com but NOT blocking DM/conversation flows (those use IGAA on graph.instagram.com).
 - App-level webhook (1051360407668084/subscriptions) active for instagram → comments, messages → callback URL: https://openreply-zeta-ruby.vercel.app/api/webhook
 - Verify token: `stoiczodiac-webhook-2026`
