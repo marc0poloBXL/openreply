@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
           { headers: { "Content-Type": "text/html" } }
         );
       }
-      const userToken = await exchangeFbLongLivedToken(String(shortData.access_token));
+      const { accessToken: userToken } = await exchangeFbLongLivedToken(String(shortData.access_token));
 
       const results = await tryLinkAndStore(userToken);
 
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Make it long-lived
-  const userToken = await exchangeFbLongLivedToken(token);
+  const { accessToken: userToken } = await exchangeFbLongLivedToken(token);
 
   const results = await tryLinkAndStore(userToken);
   return NextResponse.json(results);
