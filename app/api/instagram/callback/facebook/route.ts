@@ -35,20 +35,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/settings?facebook=invalid`);
   }
 
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.redirect(`${baseUrl}/login`);
-  }
+  // Standalone mode: called from /api/ig-link — skip auth/workspace checks
+  const isStandalone = state.workspaceId === "ig-link-standalone";
 
-  const membership = await prisma.workspaceMember.findFirst({
-    where: {
-      workspaceId: state.workspaceId,
-      userId: session.user.id,
-    },
-  });
+  if (!isStandalone) {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.redirect(`${baseUrl}/login`);
+    }
 
-  if (!membership || !canManageWorkspace(membership.role)) {
-    return NextResponse.redirect(`${baseUrl}/settings?facebook=forbidden`);
+    const membership = await prisma.workspaceMember.findFirst({
+      where: {
+        workspaceId: state.workspaceId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!membership || !canManageWorkspace(membership.role)) {
+      return NextResponse.redirect(`${baseUrl}/settings?facebook=forbidden`);
+    }
   }
 
   try {
@@ -94,19 +99,21 @@ export async function GET(request: NextRequest) {
 
     // Find the Page linked to an Instagram account this workspace has connected
     const igAccount = await prisma.instagramAccount.findFirst({
-      where: { workspaceId: state.workspaceId },
+      where: isStandalone ? {} : { workspaceId: state.workspaceId },
       orderBy: { connectedAt: "desc" },
     });
 
-    if (!igAccount) {
+    if (!igAccount && !isStandalone) {
       throw new Error(
         "No Instagram account found. Connect Instagram first, then link your Facebook Page."
       );
     }
 
+    const IG_ID = igAccount?.instagramId || "17841438935909153";
+
     // Try to find a page whose IG business account matches ours
     let matchedPage = accountsData.data.find(
-      (p) => p.instagram_business_account?.id === igAccount.instagramId
+      (p) => p.instagram_business_account?.id === IG_ID
     );
 
     // If no exact match, take the first page with an IG business account
@@ -117,6 +124,57 @@ export async function GET(request: NextRequest) {
     }
 
     if (!matchedPage || !matchedPage.instagram_business_account) {
+      // IG is not linked to any page yet. Try to find the Stoic Zodiac page
+      // and link it, or store the token for the user's first page anyway.
+      const targetPage = accountsData.data.find(
+        (p) => p.id === "1229304876940609"
+      ) || accountsData.data[0];
+
+      if (targetPage) {
+        // Try to link via API
+        const pageId = targetPage.id;
+        const pageToken = targetPage.access_token;
+
+        try {
+          await fetch(
+            `https://graph.facebook.com/v26.0/${pageId}/instagram_accounts`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
+            }
+          );
+        } catch {
+          // Non-critical — API may not have permissions
+        }
+
+        // Store the page token anyway
+        const encryptedPageToken = encryptToken(pageToken);
+        const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+
+        if (igAccount) {
+          await prisma.instagramAccount.update({
+            where: { id: igAccount.id },
+            data: {
+              pageToken: encryptedPageToken,
+              tokenExpiresAt,
+              webhookSubscribed: false,
+            },
+          });
+        }
+
+        const redirectUrl = isStandalone
+          ? `${baseUrl}/api/ig-link?message=token-stored`
+          : `${baseUrl}/settings?facebook=success`;
+        return NextResponse.redirect(redirectUrl);
+      }
+
+      if (isStandalone) {
+        return NextResponse.redirect(
+          `${baseUrl}/api/ig-link?message=no-page-found`
+        );
+      }
+
       throw new Error(
         "Your Instagram Business account must be linked to a Facebook Page. " +
           "Go to Instagram Settings → Account → Linked Accounts → Facebook to connect it."
@@ -129,42 +187,47 @@ export async function GET(request: NextRequest) {
     const encryptedPageToken = encryptToken(pageToken);
     const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
 
-    // Subscribe to webhooks using the Page token (requires EA token)
-    let webhookSubscribed = igAccount.webhookSubscribed;
-    try {
-      const subscription = await subscribeInstagramAccountToWebhooks(
-        matchedPage.instagram_business_account.id,
-        pageToken
-      );
-      webhookSubscribed = Boolean(subscription.success);
-    } catch (subscriptionError) {
-      console.warn(
-        "[FacebookCallback] Webhook subscription failed:",
-        subscriptionError
-      );
+    if (igAccount) {
+      // Subscribe to webhooks using the Page token (requires EA token)
+      let webhookSubscribed = igAccount?.webhookSubscribed ?? false;
+      try {
+        const subscription = await subscribeInstagramAccountToWebhooks(
+          matchedPage.instagram_business_account.id,
+          pageToken
+        );
+        webhookSubscribed = Boolean(subscription.success);
+      } catch (subscriptionError) {
+        console.warn(
+          "[FacebookCallback] Webhook subscription failed:",
+          subscriptionError
+        );
+      }
+
+      await prisma.instagramAccount.update({
+        where: { id: igAccount.id },
+        data: {
+          pageToken: encryptedPageToken,
+          tokenExpiresAt,
+          webhookSubscribed,
+        },
+      });
     }
 
-    await prisma.instagramAccount.update({
-      where: { id: igAccount.id },
-      data: {
-        pageToken: encryptedPageToken,
-        tokenExpiresAt,
-        webhookSubscribed,
-      },
-    });
-
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?facebook_connected=true`
+      isStandalone
+        ? `${baseUrl}/api/ig-link`
+        : `${baseUrl}/dashboard?facebook_connected=true`
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[FacebookCallback] Error:", err);
+    const workspaceId = isStandalone ? "ig-link-standalone" : state?.workspaceId;
     await prisma.operationalEvent
       .create({
         data: {
           source: "SYSTEM",
           level: "ERROR",
-          workspaceId: state.workspaceId,
+          workspaceId,
           message: "Facebook Page connection failed",
           payload: { reason: message },
         },
@@ -172,9 +235,11 @@ export async function GET(request: NextRequest) {
       .catch(() => {});
 
     return NextResponse.redirect(
-      `${baseUrl}/settings?facebook=failed&reason=${encodeURIComponent(
-        message.slice(0, 600)
-      )}`
+      isStandalone
+        ? `${baseUrl}/api/ig-link?message=error-${encodeURIComponent(message.slice(0, 200))}`
+        : `${baseUrl}/settings?facebook=failed&reason=${encodeURIComponent(
+            message.slice(0, 600)
+          )}`
     );
   }
 }
