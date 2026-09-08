@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db/client";
 import { decryptToken } from "@/lib/meta/oauth";
 
 const IG_ID = "17841438935909153";  // @stoiczodiac
-const PAGE_ID = "61594011424463";   // Stoic Zodiac Facebook Page
 const API_VERSION = process.env.META_GRAPH_API_VERSION || "v26.0";
 
 export async function GET() {
@@ -20,13 +19,7 @@ export async function GET() {
   const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
 
   const steps: Record<string, unknown> = {};
-  const results: Record<string, unknown> = {
-    instagramId: account.instagramId,
-    username: account.username,
-    hasPageToken: !!pageToken,
-    hasIgaaToken: !!igaaToken,
-    steps,
-  };
+  let discoveredPageId: string | null = null;
 
   // Step 1: Debug token scopes
   if (pageToken) {
@@ -37,50 +30,80 @@ export async function GET() {
     steps["1_token_debug"] = {
       valid: debug.data?.is_valid,
       scopes: debug.data?.scopes,
+      appId: debug.data?.app_id,
+      type: debug.data?.type,
+      profileId: debug.data?.profile_id,
+      userId: debug.data?.user_id,
       expiresAt: debug.data?.expires_at ? new Date(debug.data.expires_at * 1000).toISOString() : null,
     };
   }
 
-  // Step 2: List pages this token can access
+  // Step 2: Discover page identity via token's /me
   if (pageToken) {
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/${API_VERSION}/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}&limit=50`
+    const meRes = await fetch(
+      `https://graph.facebook.com/${API_VERSION}/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
     );
-    const pages = await pagesRes.json();
-    steps["2_pages"] = pages.data?.map((p: Record<string, unknown>) => ({
-      id: p.id,
-      name: p.name,
-      igLinked: p.instagram_business_account || null,
-    })) || pages;
+    const me = await meRes.json();
+    steps["2_token_me"] = me;
+    if (me.id) {
+      discoveredPageId = me.id;
+      steps["2_token_me"].note = `This token is for page "${me.name}" (ID: ${me.id})`;
+    }
   }
 
-  // Step 3: POST /{ig-id}/owner
-  if (pageToken) {
-    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${IG_ID}/owner`, {
+  const pageId = discoveredPageId;
+
+  // Step 3: Check IG account info on graph.facebook.com (via page token)
+  if (pageToken && pageId) {
+    const pageRes = await fetch(
+      `https://graph.facebook.com/${API_VERSION}/${pageId}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+    );
+    const pageData = await pageRes.json();
+    steps["3_page_info"] = pageData;
+    if (pageData.instagram_business_account) {
+      steps["3_page_info"].note = `✅ Page already linked to IG: @${pageData.instagram_business_account.username}`;
+    } else {
+      steps["3_page_info"].note = "❌ Page has no linked IG account yet — attempting to link...";
+    }
+  }
+
+  // Step 4: Try POST /{ig-id}/owner (link IG to page via IG account)
+  if (pageToken && pageId) {
+    const ownerRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${IG_ID}/owner`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token: pageToken, page_id: PAGE_ID }),
+      body: JSON.stringify({ access_token: pageToken, page_id: pageId }),
     });
-    steps["3_owner"] = await res.json();
+    steps["4_owner"] = await ownerRes.json();
   }
 
-  // Step 4: POST /{page-id}/instagram_accounts
-  if (pageToken) {
-    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${PAGE_ID}/instagram_accounts`, {
+  // Step 5: Try POST /{page-id}/instagram_accounts (link via page)
+  if (pageToken && pageId) {
+    const linkRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${pageId}/instagram_accounts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
     });
-    steps["4_instagram_accounts"] = await res.json();
+    steps["5_instagram_accounts"] = await linkRes.json();
   }
 
-  // Step 5: Verify — check page for linked IG
-  if (pageToken) {
-    const checkRes = await fetch(
-      `https://graph.facebook.com/${API_VERSION}/${PAGE_ID}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+  // Step 6: Verify the link
+  if (pageToken && pageId) {
+    const verifyRes = await fetch(
+      `https://graph.facebook.com/${API_VERSION}/${pageId}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
     );
-    steps["5_verify"] = await checkRes.json();
+    const verifyData = await verifyRes.json();
+    steps["6_verify"] = verifyData;
+    if (verifyData.instagram_business_account?.id === IG_ID) {
+      steps["6_verify"].note = "✅ SUCCESS: @stoiczodiac is now linked to the Facebook page!";
+    }
   }
 
-  return NextResponse.json(results);
+  return NextResponse.json({
+    instagramId: IG_ID,
+    username: account.username,
+    hasPageToken: !!pageToken,
+    discoveredPageId,
+    steps,
+  });
 }
