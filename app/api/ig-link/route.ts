@@ -38,58 +38,6 @@ function htmlPage(title: string, body: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const action = request.nextUrl.searchParams.get("action");
-
-  // Handle token submission
-  if (action === "exchange") {
-    const code = request.nextUrl.searchParams.get("code");
-    const error = request.nextUrl.searchParams.get("error");
-    if (error || !code) {
-      return new Response(
-        htmlPage("OAuth Error", `<p class="error">${error || "No code received"}</p>`),
-        { headers: { "Content-Type": "text/html" } }
-      );
-    }
-
-    // Exchange code for long-lived token
-    try {
-      const shortTokenRes = await fetch(
-        `https://graph.facebook.com/${API_VERSION}/oauth/access_token?client_id=${APP_ID}&redirect_uri=${encodeURIComponent("https://openreply-zeta-ruby.vercel.app/api/ig-link?action=exchange")}&client_secret=${process.env.FACEBOOK_APP_SECRET}&code=${code}`,
-        { method: "GET" }
-      );
-      const shortData = await shortTokenRes.json() as Record<string, unknown>;
-      if (shortData.error) {
-        return new Response(
-          htmlPage("Token Error", `<p class="error">Exchange failed: ${JSON.stringify(shortData.error)}</p>`),
-          { headers: { "Content-Type": "text/html" } }
-        );
-      }
-      const { accessToken: userToken } = await exchangeFbLongLivedToken(String(shortData.access_token));
-
-      const results = await tryLinkAndStore(userToken);
-
-      return new Response(
-        htmlPage("Result", `
-          <div class="card">
-            <p><strong>Linked:</strong> ${results.linked ? '✅ YES' : '❌ NO'}</p>
-            ${results.linked ? '<p class="success">@stoiczodiac is now linked to the Stoic Zodiac page! Comments will work via the page token.</p>' : ''}
-            <pre>${JSON.stringify(results, null, 2)}</pre>
-          </div>
-          ${results.manualSteps ? `<div class="card"><h2>Manual Steps</h2><ol>${(results.manualSteps as string[]).map(s => `<li>${s}</li>`).join('')}</ol></div>` : ''}
-          <p><a href="/api/ig-link">← Back</a></p>
-        `),
-        { headers: { "Content-Type": "text/html" } }
-      );
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      return new Response(
-        htmlPage("Error", `<p class="error">${msg}</p>`),
-        { headers: { "Content-Type": "text/html" } }
-      );
-    }
-  }
-
-  // Show status + action page
   const account = await prisma.instagramAccount.findFirst({
     orderBy: { connectedAt: "desc" },
   });
@@ -142,43 +90,39 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // OAuth login URL
-  const loginUrl = `https://www.facebook.com/dialog/oauth?client_id=${APP_ID}&redirect_uri=${encodeURIComponent("https://openreply-zeta-ruby.vercel.app/api/ig-link?action=exchange")}&scope=pages_manage_metadata,pages_read_engagement,pages_show_list,business_management&response_type=code`;
+  // Show status + action page (without OAuth redirect button)
+  // Note: OAuth redirect URL is not registered in the Facebook app,
+  // so we skip the "Login with Facebook" button and offer paste/manual only.
 
   return new Response(
     htmlPage("Link Instagram", `
       ${statusHtml}
 
       <div class="card">
-        <h3>Option 1: Click to Authorize (automatic)</h3>
-        <p>Click the button below, log into Facebook, and authorize. The app will do the rest.</p>
-        <a href="${loginUrl}" style="display:inline-block;background:#1877f2;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:16px;">
-          🔗 Login with Facebook
-        </a>
-        <p style="font-size:12px;color:#666;margin-top:12px;">
-          App ID: ${APP_ID} — Redirects back here automatically
-        </p>
+        <h3>Option 1: Manually link via Account Center</h3>
+        <ol>
+          <li>Open <a href="https://www.facebook.com/settings?tab=account_center" target="_blank">Account Center</a></li>
+          <li>Click <strong>"Accounts"</strong> → <strong>"Add accounts"</strong> → <strong>"Add Instagram account"</strong></li>
+          <li>Log into <strong>@stoiczodiac</strong></li>
+          <li>Go back to Account Center → <strong>"Profiles"</strong> → <strong>"Coupled profiles"</strong></li>
+          <li>Add the Stoic Zodiac page and @stoiczodiac together</li>
+        </ol>
+        <p style="font-size:13px;color:#666;">Alternatively: <a href="https://business.facebook.com/settings/accounts/instagram" target="_blank">Business Settings</a> → Instagram accounts → Add → Claim existing</p>
       </div>
 
       <div class="card">
-        <h3>Option 2: Graph API Explorer (manual)</h3>
+        <h3>Option 2: Paste a Facebook User Token (automatic API)</h3>
         <ol>
           <li>Open <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank">Graph API Explorer</a></li>
-          <li>Add permissions: <code>pages_manage_metadata</code>, <code>pages_show_list</code></li>
-          <li>Click "Generate Access Token" → authorize</li>
-          <li>Click "Get User Access Token" → make sure it's a <strong>User Token</strong></li>
+          <li>Add permissions: <code>pages_manage_metadata</code>, <code>pages_show_list</code>, <code>business_management</code></li>
+          <li>Click "Generate Access Token" → authorize all popups</li>
+          <li>Make sure it's a <strong>User Token</strong> (dropdown says "User Token", not "Page Token")</li>
           <li>Copy the token (starts with EAA...)</li>
         </ol>
         <form method="post">
           <input type="text" name="token" placeholder="Paste user token (EAA...)">
           <button type="submit">Submit & Link</button>
         </form>
-      </div>
-
-      <div class="card">
-        <h3>Option 3: If all else fails</h3>
-        <p>Open <a href="https://www.facebook.com/settings?tab=account_center" target="_blank">Account Center</a> → Accounts → Add Instagram account → log into @stoiczodiac</p>
-        <p>If that doesn't work, try <a href="https://business.facebook.com/settings/accounts/instagram" target="_blank">Business Settings → Instagram accounts</a> → Add → Claim existing</p>
       </div>
     `),
     { headers: { "Content-Type": "text/html" } }
@@ -196,21 +140,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     token = String(formData.get("token") || "");
     // Also check URL params
-    if (!token) {
+    if (!token && request.nextUrl.searchParams.get("token")) {
       token = request.nextUrl.searchParams.get("token");
-    }
-  }
-
-  // Check if OAuth code was received
-  const code = request.nextUrl.searchParams.get("code");
-  if (code) {
-    const shortTokenRes = await fetch(
-      `https://graph.facebook.com/${API_VERSION}/oauth/access_token?client_id=${APP_ID}&redirect_uri=${encodeURIComponent("https://openreply-zeta-ruby.vercel.app/api/ig-link")}&client_secret=${process.env.FACEBOOK_APP_SECRET}&code=${code}`,
-      { method: "GET" }
-    );
-    const shortData = await shortTokenRes.json() as Record<string, unknown>;
-    if (shortData.access_token) {
-      token = String(shortData.access_token);
     }
   }
 
