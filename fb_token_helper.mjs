@@ -20,7 +20,12 @@ import crypto from "crypto";
 import { Client } from "pg";
 
 const APP_ID = "1051360407668084";
-const APP_SECRET = "b2708ce0c790783fbf27c0dfcc0e1459";
+const APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+if (!APP_SECRET) {
+  console.error("❌ FACEBOOK_APP_SECRET is not set in environment.");
+  console.error("   Set it via: export FACEBOOK_APP_SECRET=your_secret");
+  process.exit(1);
+}
 const REDIRECT_PORT = 3123;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 const API_VERSION = "v26.0";

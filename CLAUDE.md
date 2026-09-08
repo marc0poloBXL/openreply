@@ -48,15 +48,15 @@
 - App-level webhook (1051360407668084/subscriptions) active for instagram → comments, messages → callback URL: https://openreply-zeta-ruby.vercel.app/api/webhook
 - Verify token: `stoiczodiac-webhook-2026`
 
-### Token Refresh Process
+### Token Refresh Process (✅ Works)
 
 **IGAA token (powers DMs, inbox, media)** — when it expires (~60 days):
 1. Go to https://openreply-zeta-ruby.vercel.app/api/auth/igaa-token
-2. Click the link to Facebook's developer dashboard → generate a new token (starts with IGAA...)
-3. Paste it on the helper page → it's exchanged to long-lived and stored automatically
+2. Click **"🔗 Connect Instagram"** — OAuth flow handles everything automatically
+3. Token is exchanged to long-lived and stored — no token hunting needed
 
 **Page token (for graph.facebook.com — comment reading)** — when it expires:
-Run `fb_token_helper.mjs` locally — it starts a local server, prints a Facebook Login URL, handles OAuth, stores the new token. To avoid OAuth redirect issues, set app to Development mode temporarily or use the deployed token-helper at `/api/auth/token-helper` with a token from Graph API Explorer including `business_management` scope.
+Run `fb_token_helper.mjs` locally — it starts a local server, prints a Facebook Login URL, handles OAuth, stores the new token.
 
 ### Business Managers
 - "Marc" (5180791675279566) — has Miami4Home page
