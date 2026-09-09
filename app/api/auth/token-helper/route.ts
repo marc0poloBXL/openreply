@@ -18,7 +18,7 @@ const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
 const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
 const VERIFY_TOKEN = "stoiczodiac-webhook-2026";
 
-import { encryptToken, exchangeFbLongLivedToken } from "@/lib/meta/oauth";
+import { encryptToken } from "@/lib/meta/oauth";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(req: Request) {
@@ -50,17 +50,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Step 1: Exchange for long-lived token (try; Graph API Explorer tokens
-    // may already be long-lived, so fall back to using the raw token)
-    let longLivedToken: string;
-    const rawToken = userToken.trim();
-    try {
-      const result = await exchangeFbLongLivedToken(rawToken);
-      longLivedToken = result.accessToken;
-    } catch {
-      // Exchange failed — token may already be long-lived. Try using it directly.
-      longLivedToken = rawToken;
-    }
+    // Step 1: Graph API Explorer tokens are already long-lived (60 days).
+    // Use the raw token directly. The fb_exchange_token endpoint can silently
+    // swap it for a different token with fewer scopes, so skip that call.
+    const longLivedToken = userToken.trim();
 
     // Step 2: Try /me/accounts first
     const accountsResp = await fetch(
