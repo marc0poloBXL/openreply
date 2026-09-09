@@ -76,27 +76,38 @@ async function buildPage(): Promise<string> {
         const withComments = media.data.find((m: any) => m.comments_count && m.comments_count > 0);
         const testMediaId = withComments?.id || media.data[0].id;
 
-        // Step 2: Try graph.instagram.com comments
+        // Step 2: Try graph.instagram.com comments — multiple versions/fields
         output += `<h3>2. graph.instagram.com — reading comments on ${testMediaId}</h3>`;
-        try {
-          const cRes = await fetch(
-            `https://graph.instagram.com/v25.0/${testMediaId}/comments?fields=id,text,from{id,username},timestamp&access_token=${encodeURIComponent(igaaToken)}`
-          );
-          const cData = await cRes.json();
-          if (cData.error) {
-            output += `<p class="error">❌ ${cData.error.message}</p>`;
-          } else if (cData.data?.length > 0) {
-            output += `<p class="success">✅ ${cData.data.length} comments returned via graph.instagram.com!</p><ul>`;
-            for (const c of cData.data.slice(0, 5)) {
-              output += `<li><b>${c.from?.username || c.from?.id || "?"}:</b> ${(c.text || "").substring(0, 100)}</li>`;
+        const variants = [
+          { ver: "v25.0", fields: "id,text,timestamp", label: "v25 simple" },
+          { ver: "v22.0", fields: "id,text,timestamp", label: "v22 simple" },
+          { ver: "v21.0", fields: "id,text,timestamp", label: "v21 simple" },
+          { ver: "v25.0", fields: "id,text,from{id,username},timestamp", label: "v25 with from" },
+          { ver: "v25.0", fields: "id,text,from{id,username,is_verified},replies{id,text,from{id,username}}", label: "v25 with replies" },
+        ];
+        for (const v of variants) {
+          try {
+            const cRes = await fetch(
+              `https://graph.instagram.com/${v.ver}/${testMediaId}/comments?fields=${encodeURIComponent(v.fields)}&access_token=${encodeURIComponent(igaaToken)}`
+            );
+            const cData = await cRes.json();
+            const n = cData.data?.length ?? 0;
+            if (cData.error) {
+              output += `<p><b>${v.label} (${v.ver}):</b> <span class="error">❌ ${cData.error.message}</span></p>`;
+            } else if (n > 0) {
+              output += `<p><b>${v.label} (${v.ver}):</b> <span class="success">✅ ${n} comments!</span></p><ul>`;
+              for (const c of cData.data.slice(0, 5)) {
+                const who = c.from?.username || c.from?.id || "?";
+                output += `<li><b>${who}:</b> ${(c.text || "").substring(0, 100)}</li>`;
+              }
+              if (n > 5) output += `<li>… and ${n - 5} more</li>`;
+              output += `</ul>`;
+            } else {
+              output += `<p><b>${v.label} (${v.ver}):</b> ⚠️ 0 comments returned (no error — data empty)</p>`;
             }
-            if (cData.data.length > 5) output += `<li>… and ${cData.data.length - 5} more</li>`;
-            output += `</ul>`;
-          } else {
-            output += `<p>No comments on this media or they aren't returned.</p>`;
+          } catch (e: any) {
+            output += `<p><b>${v.label}:</b> <span class="error">❌ threw: ${e.message}</span></p>`;
           }
-        } catch (e: any) {
-          output += `<p class="error">❌ graph.instagram.com comments threw: ${e.message}</p>`;
         }
 
         // Step 3: Try graph.facebook.com with IGAA token (some versions work for comments)
