@@ -50,18 +50,16 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Step 1: Exchange for long-lived token
+    // Step 1: Exchange for long-lived token (try; Graph API Explorer tokens
+    // may already be long-lived, so fall back to using the raw token)
     let longLivedToken: string;
+    const rawToken = userToken.trim();
     try {
-      const result = await exchangeFbLongLivedToken(userToken.trim());
+      const result = await exchangeFbLongLivedToken(rawToken);
       longLivedToken = result.accessToken;
-    } catch (e) {
-      return new Response(htmlPage("⚠️ Token Exchange Failed",
-        `<p class="error">Could not exchange the token for a long-lived one.</p>
-         <p>This usually means the token is already expired or invalid.</p>
-         <p>Please go to the <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a> and generate a fresh token.</p>
-         <p><a href="?" style="color:#1877F2;">← Try again with a fresh token</a></p>`
-      ), { headers: { "content-type": "text/html" } });
+    } catch {
+      // Exchange failed — token may already be long-lived. Try using it directly.
+      longLivedToken = rawToken;
     }
 
     // Step 2: Try /me/accounts first
