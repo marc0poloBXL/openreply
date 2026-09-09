@@ -169,27 +169,77 @@ export async function GET(req: Request) {
       linkResult = `<p class="error">❌ Link attempt threw: ${e.message}</p>`;
     }
 
-    // Step 6: Subscribe webhooks
+    // Step 6: Subscribe webhooks — try ALL possible token types
     let subscribed = false;
-    try {
-      const igSub = await fetch(
-        `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            access_token: pageInfo.pageToken,
-            subscribed_fields: "comments,messages",
-          }),
-        }
-      );
-      const igResult = await igSub.json();
-      subscribed = Boolean(igResult.success || igResult.id);
+    let subErrors: string[] = [];
+
+    // Try 1: Page token (might fail if IG not linked to page)
+    if (pageInfo?.pageToken) {
+      try {
+        const igSub = await fetch(
+          `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: pageInfo.pageToken,
+              subscribed_fields: "comments,messages",
+            }),
+          }
+        );
+        const igResult = await igSub.json();
+        subscribed = Boolean(igResult.success || igResult.id);
+        if (!subscribed) subErrors.push(`page token: ${igResult.error?.message?.substring(0, 100) || "?"}`);
+      } catch { subErrors.push("page token: threw"); }
+    }
+
+    // Try 2: User token directly
+    if (!subscribed) {
+      try {
+        const igSub = await fetch(
+          `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: longLivedToken,
+              subscribed_fields: "comments,messages",
+            }),
+          }
+        );
+        const igResult = await igSub.json();
+        subscribed = Boolean(igResult.success || igResult.id);
+        if (!subscribed) subErrors.push(`user token: ${igResult.error?.message?.substring(0, 100) || "?"}`);
+      } catch { subErrors.push("user token: threw"); }
+    }
+
+    // Try 3: App token (app_id|app_secret)
+    if (!subscribed) {
+      try {
+        const appToken = `${APP_ID}|${APP_SECRET}`;
+        const igSub = await fetch(
+          `https://graph.facebook.com/${API_VER}/${IG_ID}/subscribed_apps`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: appToken,
+              subscribed_fields: "comments,messages",
+            }),
+          }
+        );
+        const igResult = await igSub.json();
+        subscribed = Boolean(igResult.success || igResult.id);
+        if (!subscribed) subErrors.push(`app token: ${igResult.error?.message?.substring(0, 100) || "?"}`);
+      } catch { subErrors.push("app token: threw"); }
+    }
+
+    if (subscribed) {
       await prisma.instagramAccount.update({
         where: { id: IG_ACCOUNT_DB_ID },
         data: { webhookSubscribed: subscribed },
       });
-    } catch { /* non-critical */ }
+    }
 
     return new Response(htmlPage("✅ Done!",
       `<div class="success">
