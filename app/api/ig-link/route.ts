@@ -169,8 +169,8 @@ async function buildPage(): Promise<string> {
   try {
     const recentWebhooks = await prisma.webhookEvent.findMany({
       orderBy: { createdAt: "desc" },
-      take: 10,
-      select: { id: true, object: true, status: true, createdAt: true, workspaceId: true },
+      take: 5,
+      select: { id: true, object: true, status: true, createdAt: true, workspaceId: true, payload: true },
     });
     const total = await prisma.webhookEvent.count().catch(() => 0);
     const processed = await prisma.webhookEvent.count({ where: { status: "PROCESSED" } }).catch(() => 0);
@@ -180,7 +180,14 @@ async function buildPage(): Promise<string> {
     output += `<p>Recent events (${recentWebhooks.length}):</p><ul>`;
     for (const evt of recentWebhooks) {
       const ws = evt.workspaceId ? "✅" : "❌";
-      output += `<li>${evt.createdAt.toISOString().substring(11, 19)} — ${evt.object} — ${evt.status} ${ws}</li>`;
+      // Extract event types from payload
+      const p = evt.payload as Record<string, unknown> | undefined;
+      const entry = Array.isArray(p?.entry) ? p.entry as Array<Record<string, unknown>> : [];
+      const types = entry.flatMap((e: Record<string, unknown>) => {
+        const changes = Array.isArray(e.changes) ? e.changes as Array<Record<string, unknown>> : [];
+        return changes.map((c: Record<string, unknown>) => String(c.field || "?"));
+      }).join(", ");
+      output += `<li>${evt.createdAt.toISOString().substring(11, 19)} — ${evt.object} — ${evt.status} ${ws} <span style="color:#666;font-size:12px">[${types || "no changes"}]</span></li>`;
     }
     output += `</ul>`;
 
