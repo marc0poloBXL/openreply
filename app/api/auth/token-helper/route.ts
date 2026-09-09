@@ -86,10 +86,58 @@ export async function GET(req: Request) {
     }
 
     if (!pageInfo) {
+      // Diagnostic: check what the token CAN access
+      let diag = "<h2>🔍 Token Diagnostics</h2>";
+      try {
+        const meCheck = await fetch(
+          `https://graph.facebook.com/${API_VER}/me?fields=id,name&access_token=${encodeURIComponent(longLivedToken)}`
+        );
+        const meData = await meCheck.json();
+        diag += `<p>✅ Token valid for: ${meData.name} (${meData.id})</p>`;
+      } catch { diag += `<p>❌ Token invalid for /me</p>`; }
+
+      try {
+        const acctCheck = await fetch(
+          `https://graph.facebook.com/${API_VER}/me/accounts?fields=id,name&access_token=${encodeURIComponent(longLivedToken)}`
+        );
+        const acctData = await acctCheck.json();
+        if (acctData.data && acctData.data.length > 0) {
+          diag += `<p>✅ /me/accounts returns ${acctData.data.length} pages:</p><ul>`;
+          for (const p of acctData.data) {
+            diag += `<li>${p.name} (${p.id})</li>`;
+          }
+          diag += `</ul>`;
+        } else {
+          diag += `<p>❌ /me/accounts returns 0 pages (missing pages_show_list scope)</p>`;
+        }
+      } catch { diag += `<p>❌ /me/accounts failed</p>`; }
+
+      try {
+        const bmCheck = await fetch(
+          `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_pages?fields=id,name&access_token=${encodeURIComponent(longLivedToken)}`
+        );
+        const bmData = await bmCheck.json();
+        if (bmData.data && bmData.data.length > 0) {
+          diag += `<p>✅ BM owned_pages returns ${bmData.data.length} pages</p>`;
+        } else {
+          diag += `<p>❌ BM owned_pages returns 0 (missing business_management scope)</p>`;
+        }
+      } catch { diag += `<p>❌ BM owned_pages failed</p>`; }
+
       return new Response(htmlPage("⚠️ Page Not Found",
-        `<p class="error">Could not find "Stoic Zodiac" page. Make sure your token has access to the page.</p>
-         <p>Try visiting the <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a> again, and add <code>business_management</code> permission.</p>
-         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+        `<p class="error">Could not find "Stoic Zodiac" page.</p>
+         ${diag}
+         <hr>
+         <p><strong>Fix:</strong> Go back to the <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a> and:</p>
+         <ol>
+           <li>Make sure the dropdown says <strong>"User Token"</strong></li>
+           <li>Click the <strong>"Add permissions"</strong> button (top-right of the token box)</li>
+           <li>Add: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code>, <code>pages_manage_metadata</code></li>
+           <li>Click <strong>"Generate Access Token"</strong> again</li>
+           <li><strong>IMPORTANT:</strong> On the Facebook popup, make sure you <strong>check ALL the permission checkboxes</strong> before clicking Continue</li>
+           <li>Copy the NEW token and paste it here again</li>
+         </ol>
+         <p><a href="?" style="color:#1877F2;">← Try again with a fresh token</a></p>`
       ), { headers: { "content-type": "text/html" } });
     }
 
