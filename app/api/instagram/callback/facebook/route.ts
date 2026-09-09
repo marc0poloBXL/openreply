@@ -11,9 +11,6 @@ import {
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
 
-const IG_ID = "17841438935909153";
-const PAGE_ID = "1229304876940609";
-
 /**
  * Facebook Login callback — second auth step.
  *
@@ -23,10 +20,6 @@ const PAGE_ID = "1229304876940609";
  *
  * The state contains the instagramAccountId so we can merge the Page
  * token into the existing Instagram account record.
- *
- * SPECIAL MODE: if state.workspaceId === "ig-link-standalone", this was
- * called from /api/ig-link for a one-off token refresh / link attempt.
- * In that mode, it skips auth checks and redirects back to /api/ig-link.
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -42,14 +35,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/settings?facebook=invalid`);
   }
 
-  const isStandalone = state.workspaceId === "ig-link-standalone";
-
-  // ── Standalone mode: from /api/ig-link — skip auth/workspace checks ──
-  if (isStandalone) {
-    return handleStandalone(code, baseUrl);
-  }
-
-  // Normal mode: require login + workspace membership
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.redirect(`${baseUrl}/login`);
@@ -191,73 +176,5 @@ export async function GET(request: NextRequest) {
         message.slice(0, 600)
       )}`
     );
-  }
-}
-
-/**
- * Standalone handler for /api/ig-link mode.
- * Exchanges code, finds the Stoic Zodiac page, stores the token,
- * and redirects back to /api/ig-link.
- */
-async function handleStandalone(code: string, baseUrl: string): Promise<Response> {
-  try {
-    const redirectUri = `${baseUrl}/api/instagram/callback/facebook`;
-
-    const { accessToken: shortLived } = await exchangeFbCodeForToken(code, redirectUri);
-    const { accessToken: longLived } = await exchangeFbLongLivedToken(shortLived);
-
-    const version = process.env.META_GRAPH_API_VERSION ?? "v26.0";
-    const accountsUrl = new URL(`https://graph.facebook.com/${version}/me/accounts`);
-    accountsUrl.searchParams.set("fields", "id,name,access_token");
-    accountsUrl.searchParams.set("access_token", longLived);
-    const accountsRes = await fetch(accountsUrl.toString());
-    const accountsData = (await accountsRes.json()) as { data?: Array<{ id: string; name: string; access_token: string }> };
-
-    if (!accountsData.data || accountsData.data.length === 0) {
-      return NextResponse.redirect(`${baseUrl}/api/ig-link?msg=no-pages`);
-    }
-
-    // Find the Stoic Zodiac page
-    const ourPage = accountsData.data.find((p) => p.id === PAGE_ID);
-    if (!ourPage) {
-      return NextResponse.redirect(`${baseUrl}/api/ig-link?msg=page-not-found`);
-    }
-
-    const pageToken = ourPage.access_token;
-
-    // Store it
-    const encrypted = encryptToken(pageToken);
-    const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
-    const account = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
-    if (account) {
-      await prisma.instagramAccount.update({
-        where: { id: account.id },
-        data: { pageToken: encrypted, tokenExpiresAt },
-      });
-    }
-
-    // Try to link @stoiczodiac to the page using the NEW token (which has pages_manage_metadata scope)
-    let linkMsg = "";
-    try {
-      const linkRes = await fetch(`https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
-      });
-      const linkData = await linkRes.json() as Record<string, unknown>;
-      if (linkData.success) {
-        linkMsg = "&link=success";
-      } else {
-        const e = linkData.error as Record<string, unknown> || {};
-        linkMsg = `&link=failed&linkCode=${e.code}&linkMsg=${encodeURIComponent((e.message as string || "").slice(0, 200))}`;
-      }
-    } catch (e) {
-      linkMsg = `&link=error&linkMsg=${encodeURIComponent((e instanceof Error ? e.message : "").slice(0, 200))}`;
-    }
-
-    return NextResponse.redirect(`${baseUrl}/api/ig-link?msg=token-refreshed${linkMsg}`);
-  } catch (e) {
-    const msg = e instanceof Error ? encodeURIComponent(e.message.slice(0, 200)) : "unknown";
-    return NextResponse.redirect(`${baseUrl}/api/ig-link?msg=error-${msg}`);
   }
 }
