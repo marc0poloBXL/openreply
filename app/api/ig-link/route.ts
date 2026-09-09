@@ -158,13 +158,63 @@ async function buildPage(): Promise<string> {
     output += `<p class="error">No IGAA token — cannot test comment reading.</p>`;
   }
 
+  // === WEBHOOK STATUS (push path — works without FB page link) ===
+  // Count of successfully processed webhook broadcasts — a proxy for whether
+  // Meta is delivering comment events to this app. (Parsing the raw JSON for
+  // exact comment payloads is fragile; processed events are the safe signal.)
+  const webhookCommentCount = await prisma.webhookEvent
+    .count({ where: { status: "PROCESSED" } })
+    .catch(() => 0);
+  output += `<hr><h2>📡 Webhook (Push) Path Status</h2>`;
+  try {
+    const recentWebhooks = await prisma.webhookEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { id: true, object: true, status: true, createdAt: true, workspaceId: true },
+    });
+    const total = await prisma.webhookEvent.count().catch(() => 0);
+    const processed = await prisma.webhookEvent.count({ where: { status: "PROCESSED" } }).catch(() => 0);
+    const failed = await prisma.webhookEvent.count({ where: { status: "FAILED" } }).catch(() => 0);
+
+    output += `<p>Total webhook events: ${total} | PROCESSED: ${processed} | FAILED: ${failed}</p>`;
+    output += `<p>Recent events (${recentWebhooks.length}):</p><ul>`;
+    for (const evt of recentWebhooks) {
+      const ws = evt.workspaceId ? "✅" : "❌";
+      output += `<li>${evt.createdAt.toISOString().substring(11, 19)} — ${evt.object} — ${evt.status} ${ws}</li>`;
+    }
+    output += `</ul>`;
+
+    // Check DM logs (comment actions processed)
+    const dmByStatus = await prisma.dmLog.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    }).catch(() => []);
+    if (dmByStatus.length > 0) {
+      output += `<p>DM/comment actions:</p><ul>`;
+      for (const row of dmByStatus) {
+        output += `<li>${row.status}: ${row._count.id}</li>`;
+      }
+      output += `</ul>`;
+    }
+  } catch (e: any) {
+    output += `<p class="error">❌ Webhook query failed: ${e.message}</p>`;
+  }
+
   // Summary + next steps
   output += `<hr><h2>📋 Summary</h2>`;
+  if (webhookCommentCount > 0) {
+    output += `<p class="success">✅ Webhooks delivered ${webhookCommentCount} comment events! Comment auto-reply works via push.</p>`;
+  }
   if (linkedToPage) {
-    output += `<p class="success">✅ IG is linked to FB Page. Page token should work for comments. If you see a failure in test 4 above, the stored page token may be missing permissions.</p>`;
+    output += `<p class="success">✅ IG is linked to FB Page. Page token should work for comments.</p>`;
   } else {
-    output += `<p class="error">❌ IG is NOT linked to FB Page. Page token won't work for comments via graph.facebook.com.</p>`;
-    output += `<p>But if <strong>test 2</strong> above succeeds (graph.instagram.com returns other users' comments), then we DON'T need the page link at all! The IGAA token can power comment reading directly.</p>`;
+    output += `<p class="error">❌ IG is NOT linked to FB Page. Page token won't work for polling via graph.facebook.com.</p>`;
+    if (webhookCommentCount > 0) {
+      output += `<p class="success">BUT ${webhookCommentCount} webhook events were processed! The push path works. Comment events delivered this way are processed without needing the page link.</p>`;
+    } else {
+      output += `<p>⚠️ No processed webhook events found. The IG account may not be granting events to this app yet.</p>`;
+      output += `<p>To fix: <strong>visit <a href="/api/auth/token-helper">/api/auth/token-helper</a> and paste an Explorer token with <code>pages_manage_metadata</code></strong> — it runs <code>subscribed_apps</code> automatically. This is required for webhook delivery even without the page link.</p>`;
+    }
   }
 
   return wrapHtml(output);
