@@ -187,9 +187,12 @@ async function buildPage(): Promise<string> {
         const changes = Array.isArray(e.changes) ? e.changes as Array<Record<string, unknown>> : [];
         return changes.map((c: Record<string, unknown>) => String(c.field || "?"));
       }).join(", ");
-      // Debug: show top-level keys + entry count for the first event
+      // Debug: show first entry's keys + check for changes
+      const firstEntry = entry.length > 0 ? entry[0] : null;
+      const entryKeys = firstEntry ? Object.keys(firstEntry).join(",") : "none";
+      const hasChanges = firstEntry ? "changes" in firstEntry : false;
       const debug = recentWebhooks.indexOf(evt) === 0
-        ? `<span style="color:#888;font-size:11px"> (entry:${entry.length}, keys:${Object.keys(p || {}).join(",")})</span>`
+        ? `<span style="color:#888;font-size:11px"> (entry:${entry.length}, keys:${entryKeys}, hasChanges:${hasChanges})</span>`
         : "";
       output += `<li>${evt.createdAt.toISOString().substring(11, 19)} — ${evt.object} — ${evt.status} ${ws} <span style="color:#666;font-size:12px">[${types || "no changes"}]</span>${debug}</li>`;
     }
