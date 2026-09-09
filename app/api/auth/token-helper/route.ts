@@ -32,7 +32,7 @@ export async function GET(req: Request) {
        <p><a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" class="btn-link">https://developers.facebook.com/tools/explorer/${APP_ID}/</a></p>
        <ul>
          <li>Make sure the dropdown says <strong>"User Token"</strong> (not Page Token)</li>
-         <li>Add these permissions: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code></li>
+         <li>Add these permissions: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code>, <code>pages_manage_metadata</code></li>
          <li>Click "Generate Access Token" and authorize all the popups</li>
          <li>Click "Add" next to permissions to add them</li>
        </ul>
@@ -104,7 +104,33 @@ export async function GET(req: Request) {
       data: { pageToken: encrypted, tokenExpiresAt: expiresAt },
     });
 
-    // Step 5: Subscribe webhooks
+    // Step 5: Try to link @stoiczodiac to the Stoic Zodiac page
+    let linkResult = "";
+    try {
+      const linkRes = await fetch(
+        `https://graph.facebook.com/${API_VER}/${pageInfo.pageId}/instagram_accounts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: pageInfo.pageToken.trim(),
+            instagram_account_id: IG_ID,
+          }),
+        }
+      );
+      const linkData = await linkRes.json();
+      if (linkData.success) {
+        linkResult = `<p class="success">✅ @stoiczodiac linked to page via API!</p>`;
+      } else {
+        const e = linkData.error || {};
+        linkResult = `<p class="error">❌ API link failed (code ${e.code}): ${e.message ? e.message.slice(0, 150) : "unknown"}</p>`;
+        if (e.error_user_msg) linkResult += `<p style="font-size:13px;color:#666;">${e.error_user_msg}</p>`;
+      }
+    } catch (e: any) {
+      linkResult = `<p class="error">❌ Link attempt threw: ${e.message}</p>`;
+    }
+
+    // Step 6: Subscribe webhooks
     let subscribed = false;
     try {
       const igSub = await fetch(
@@ -129,10 +155,12 @@ export async function GET(req: Request) {
     return new Response(htmlPage("✅ Done!",
       `<div class="success">
          <p><strong>✅ Page token stored!</strong> (valid until ~${expiresAt.toLocaleDateString()})</p>
-         <p><strong>✅ Webhook:</strong> ${subscribed ? "Subscribed!" : "⚠️ Not subscribed"}</p>
          <p><strong>✅ Page:</strong> ${pageInfo.pageName}</p>
+         ${linkResult}
+         <p><strong>✅ Webhook:</strong> ${subscribed ? "Subscribed!" : "⚠️ Not subscribed"}</p>
        </div>
-       <p>Your DM automation is now fully configured. Go back to OpenReply and check the inbox.</p>
+       <p>${linkResult.includes("success") ? "Your DM automation is fully configured and can now read comments." : "If the link failed, <strong>refresh this page with a fresh token from Graph API Explorer</strong> making sure you added <code>pages_manage_metadata</code> permission."}</p>
+       <p><a href="/api/ig-link" class="btn-link">→ Check link status on /api/ig-link</a></p>
        <hr>
        <p style="font-size:13px;color:#666;">
          The long-lived token will be auto-refreshed by the cron job before it expires.

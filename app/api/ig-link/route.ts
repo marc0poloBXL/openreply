@@ -18,63 +18,48 @@ async function buildPage(): Promise<string> {
   const token = account?.pageToken ? decryptToken(account.pageToken) : null;
 
   if (token) {
-    try {
-      const r = await fetch(
-        `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=name,instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}`
-      );
-      const d = (await r.json()) as Record<string, unknown>;
-      if (d.instagram_business_account) {
-        const ig = d.instagram_business_account as Record<string, unknown>;
-        if (ig.id === IG_ID) {
-          return wrapHtml(`<span class="success">✅ @stoiczodiac IS linked to "${PAGE_NAME}"!</span>
-<p>Comment reading via graph.facebook.com should work.</p>`);
+    for (const pid of [PAGE_ID, "61594011424463"]) {
+      try {
+        const r = await fetch(
+          `https://graph.facebook.com/v26.0/${pid}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}`
+        );
+        const d = (await r.json()) as Record<string, unknown>;
+        if (d.error) { continue; }
+        const name = d.name || "?";
+        const igBiz = d.instagram_business_account as Record<string, unknown> | undefined;
+        if (igBiz && igBiz.id === IG_ID) {
+          return wrapHtml(`<span class="success">✅ @stoiczodiac IS linked to "${name}"!</span>
+<p>Comment reading via graph.facebook.com should work now.</p>`);
         }
-        log(`⚠️ Page linked to @${ig.username} (${ig.id}) instead of @stoiczodiac`);
-      } else {
-        log(`<span class="error">❌ "${PAGE_NAME}" has NO linked Instagram account</span>`);
-      }
-    } catch { log(`<span class="error">❌ Cannot check page status</span>`); }
-  } else {
-    log(`<span class="error">❌ No page token stored</span>`);
+      } catch { /* skip */ }
+    }
   }
 
   return wrapHtml(`
-    ${entries.join("\n")}
+    <p>@stoiczodiac is <span class="error">NOT linked</span> to the Stoic Zodiac page.</p>
+    <p>Use the <strong>Token Helper</strong> tool below to fix this — no phone navigation needed.</p>
 
-    <div class="card" style="border-left:4px solid #dc2626;background:#fff5f5;">
-      <h2>📱 Manual linking required</h2>
-      <p>The Facebook app doesn't have the API permissions needed to link Instagram accounts. You <strong>must</strong> do this manually in the Instagram app:</p>
+    <hr>
+    <h2>🔧 Solution: Token Helper (Graph API Explorer)</h2>
+    <div class="card">
+      <p><strong>Step 1:</strong> Open the Graph API Explorer:</p>
+      <p><a href="https://developers.facebook.com/tools/explorer/1051360407668084/" target="_blank" class="btn">🔗 Open Graph API Explorer</a></p>
 
-      <h3>Method A: Account Center (easiest)</h3>
+      <p><strong>Step 2:</strong> In the Explorer:</p>
       <ol>
-        <li>Open the <strong>Instagram app</strong> on your phone</li>
-        <li>Go to your <strong>profile</strong> (bottom right icon)</li>
-        <li>Tap ☰ menu (top right) → <strong>Account Center</strong></li>
-        <li>Tap <strong>Accounts</strong> → <strong>Linked Accounts</strong> → <strong>Facebook</strong></li>
-        <li>If "Stoic Zodiac" is listed, select it. If not listed, tap <strong>"Add"</strong> and search for "Stoic Zodiac"</li>
-        <li>Make sure you select the <strong>Page</strong> (not your personal profile)</li>
+        <li>Set the dropdown to <strong>"User Token"</strong> (not Page Token)</li>
+        <li>Click <strong>"Add permissions"</strong> → add: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code>, <code>pages_manage_metadata</code></li>
+        <li>Click <strong>"Generate Access Token"</strong> → authorize everything</li>
+        <li>Copy the token (starts with <code>EAA...</code>)</li>
       </ol>
 
-      <h3>Method B: Facebook Page Settings</h3>
-      <ol>
-        <li>Open Facebook in browser</li>
-        <li>Go to <strong>"Stoic Zodiac"</strong> page</li>
-        <li>Click <strong>Settings</strong> at the top</li>
-        <li>Click <strong>Instagram</strong> in the left menu</li>
-        <li>Click <strong>Connect Account</strong> → Log in as @stoiczodiac</li>
-      </ol>
-
-      <h3>Method C: Business Manager</h3>
-      <ol>
-        <li>Go to <strong>business.facebook.com</strong> → Business Manager "marc jelen"</li>
-        <li>Select <strong>"Stoic Zodiac"</strong> page under Pages</li>
-        <li>Go to <strong>Settings</strong> → <strong>Instagram Accounts</strong></li>
-        <li>Click <strong>Add</strong> and follow the prompts for @stoiczodiac</li>
-      </ol>
-
-      <p>After you do any of these, click the button below to verify:</p>
-      <p><a href="/api/ig-link" class="btn">↻ Check link status</a></p>
+      <p><strong>Step 3:</strong> Paste the token here:</p>
+      <p><a href="/api/auth/token-helper" class="btn">🔑 Go to Token Helper</a></p>
+      <p style="font-size:13px;color:#555;">Paste your token there and submit. It will exchange it, find the Stoic Zodiac page, store the token, AND try to link @stoiczodiac to the page automatically.</p>
     </div>
+
+    <hr>
+    <p><a href="/api/ig-link" class="btn">↻ Check status</a></p>
   `);
 }
 
@@ -85,17 +70,20 @@ function wrapHtml(body: string): string {
 <title>Link @stoiczodiac</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;line-height:1.5;color:#111}
-  h1{font-size:24px} h2{font-size:17px;margin-top:20px} h3{font-size:15px;margin-top:16px}
+  h1{font-size:24px} h2{font-size:17px;margin-top:20px}
   .card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:20px;margin:16px 0}
-  .card div{padding:3px 0;font-family:monospace;font-size:13px}
   .error{color:#dc2626;font-weight:600}
   .success{color:#16a34a;font-weight:600}
-  .btn{display:inline-block;background:#1877f2;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500}
+  .btn{display:inline-block;background:#1877f2;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin:4px}
+  .btn:hover{background:#166fe5}
   ol li{margin-bottom:8px}
+  a{color:#1877f2}
+  code{background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:13px}
+  hr{border:none;border-top:1px solid #e0e0e0;margin:24px 0}
 </style>
 </head>
 <body>
-<h1>🔗 Link @stoiczodiac (${IG_ID}) → "${PAGE_NAME}" (${PAGE_ID})</h1>
+<h1>🔗 @stoiczodiac (${IG_ID}) → "${PAGE_NAME}"</h1>
 ${body}
 </body></html>`;
 }
