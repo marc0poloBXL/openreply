@@ -159,50 +159,74 @@ export async function GET(req: Request) {
 
     // Step 5: Try to link @stoiczodiac to the Stoic Zodiac page
     let linkResult = "";
-    try {
-      // Method A: Direct page-to-IG link
-      const linkRes = await fetch(
-        `https://graph.facebook.com/${API_VER}/${pageInfo.pageId}/instagram_accounts`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            access_token: pageInfo.pageToken.trim(),
-            instagram_account_id: IG_ID,
-          }),
-        }
-      );
-      let linkData = await linkRes.json();
-      if (linkData.success) {
-        linkResult = `<p class="success">✅ @stoiczodiac linked to page via API!</p>`;
-      } else {
-        linkResult = `<p class="error">❌ Direct link failed (code ${linkData.error?.code}): ${linkData.error?.message ? linkData.error.message.slice(0, 150) : "unknown"}</p>`;
-        // Method B: Try via Business Manager
-        try {
-          const bmRes = await fetch(
-            `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_instagram_accounts`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                access_token: pageInfo.pageToken.trim(),
-                instagram_account_id: IG_ID,
-              }),
-            }
-          );
-          const bmData = await bmRes.json();
-          if (bmData.success) {
-            linkResult += `<p class="success">✅ @stoiczodiac linked via Business Manager!</p>`;
-          } else {
-            linkResult += `<p class="error">❌ BM link also failed: ${bmData.error?.message?.slice(0, 150) || "unknown"}</p>`;
+    // The link edge needs pages_manage_metadata. Page tokens sometimes lack
+    // this even when the user token has it. Try user token as fallback.
+    const linkTokens = [
+      { label: "page token", token: pageInfo.pageToken.trim() },
+      { label: "user token", token: longLivedToken },
+    ];
+    for (const { label, token } of linkTokens) {
+      try {
+        const linkRes = await fetch(
+          `https://graph.facebook.com/${API_VER}/${pageInfo.pageId}/instagram_accounts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: token,
+              instagram_account_id: IG_ID,
+            }),
           }
-        } catch (e2: any) {
-          linkResult += `<p class="error">❌ BM link threw: ${e2.message}</p>`;
+        );
+        const linkData = await linkRes.json();
+        if (linkData.success) {
+          linkResult = `<p class="success">✅ @stoiczodiac linked to page via ${label}!</p>`;
+          break;
+        } else {
+          linkResult += `<p class="error">❌ ${label} link failed (code ${linkData.error?.code}): ${linkData.error?.message ? linkData.error.message.slice(0, 150) : "unknown"}</p>`;
+          if (linkData.error?.error_user_msg) linkResult += `<p style="font-size:13px;color:#666;">${linkData.error.error_user_msg}</p>`;
         }
+      } catch (e: any) {
+        linkResult += `<p class="error">❌ ${label} link threw: ${e.message}</p>`;
       }
-    } catch (e: any) {
-      linkResult = `<p class="error">❌ Link attempt threw: ${e.message}</p>`;
     }
+
+    // If both token types failed on direct link, try BM approach
+    if (!linkResult.includes("success")) {
+      try {
+        const bmRes = await fetch(
+          `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_instagram_accounts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: longLivedToken,
+              instagram_account_id: IG_ID,
+            }),
+          }
+        );
+        const bmData = await bmRes.json();
+        if (bmData.success) {
+          linkResult += `<p class="success">✅ @stoiczodiac linked via Business Manager!</p>`;
+        } else {
+          const bmMsg = bmData.error?.message?.slice(0, 150) || "unknown";
+          linkResult += `<p class="error">❌ BM link also failed: ${bmMsg}</p>`;
+          // If the BM endpoint returned error 33 (doesn't exist), the page
+          // may not be in Business Manager at all. Suggest manual action.
+          if (bmData.error?.error_subcode === 33) {
+            linkResult += `<p style="font-size:13px;color:#666;">💡 The page may not be in Business Manager. Try linking from
+              <a href="https://business.facebook.com/" target="_blank" style="color:#1877F2;">Business Settings</a>:
+              Add the Instagram account to your Business Manager first.</p>`;
+          }
+        }
+      } catch (e2: any) {
+        linkResult += `<p class="error">❌ BM link threw: ${e2.message}</p>`;
+      }
+    }
+
+    // If still not linked, note it for the user — the token IS stored
+    // and webhooks are subscribed. The link can be re-attempted later
+    // by visiting /api/auth/token-helper with a fresh Graph API Explorer token.
 
     // Step 6: Subscribe webhooks — try ALL possible token types
     let subscribed = false;
