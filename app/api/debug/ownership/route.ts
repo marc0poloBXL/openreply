@@ -58,6 +58,20 @@ export async function GET() {
     }
   }
 
+  // 8. Try linking with App Access Token
+  const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+  if (appToken.includes("|") && !appToken.endsWith("|")) {
+    // Direct page-to-IG link
+    try {
+      const r = await fetch(`https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: appToken, instagram_account_id: IG_ID }),
+      });
+      log.link_via_app_token = await r.json();
+    } catch (e: any) { log.link_via_app_token = { error: e.message }; }
+  }
+
   // 7. Check connected apps for this IG
   if (igaaToken) {
     await probe("ig_connected_apps", `https://graph.instagram.com/v25.0/${IG_ID}?fields=id,username,account_type,ig_is_business,connected_to_app&access_token=${encodeURIComponent(igaaToken)}`);
