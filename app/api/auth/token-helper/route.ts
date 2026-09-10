@@ -248,7 +248,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // Method D: IG assigned_pages with IGAA token on graph.instagram.com
+    // Method D: IG assigned_pages with IGAA token on graph.facebook.com
     if (!linkResult.includes("success")) {
       try {
         const stored = await prisma.instagramAccount.findUnique({
@@ -259,7 +259,7 @@ export async function GET(req: Request) {
           const { decryptToken } = await import("@/lib/meta/oauth");
           const igaaToken = decryptToken(stored.accessToken);
           const assignRes = await fetch(
-            `https://graph.instagram.com/${API_VER.replace("v", "")}/${IG_ID}/assigned_pages`,
+            `https://graph.facebook.com/${API_VER}/${IG_ID}/assigned_pages`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -271,7 +271,7 @@ export async function GET(req: Request) {
           );
           const assignData = await assignRes.json();
           if (assignData.success) {
-            linkResult += `<p class="success">✅ @stoiczodiac linked via IG assigned_pages (IGAA)!</p>`;
+            linkResult += `<p class="success">✅ @stoiczodiac linked via IG assigned_pages (IGAA on FB graph)!</p>`;
           } else {
             linkResult += `<p class="error">❌ IG assigned_pages (IGAA) failed: ${assignData.error?.message?.slice(0, 150) || "unknown"}</p>`;
           }
