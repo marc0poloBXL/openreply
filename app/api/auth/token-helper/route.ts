@@ -8,8 +8,8 @@
  * No CORS issues, no OAuth redirects.
  */
 
-const APP_ID = process.env.FACEBOOK_APP_ID || "1051360407668084";
-const APP_SECRET = process.env.FACEBOOK_APP_SECRET || "b2708ce0c790783fbf27c0dfcc0e1459";
+const APP_ID = "1051360407668084";
+const APP_SECRET = "b2708ce0c790783fbf27c0dfcc0e1459";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "61594011424463";
