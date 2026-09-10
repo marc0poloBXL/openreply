@@ -70,9 +70,9 @@ export async function GET() {
     `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,instagram_accounts{id,username}&access_token=${encodeURIComponent(pageToken)}`
   );
 
-  // 9. Page feed — check if IG media appears (happens when linked)
-  await probe("9_feed",
-    `https://graph.facebook.com/v26.0/${PAGE_ID}/feed?fields=id,message,created_time&limit=3&access_token=${encodeURIComponent(pageToken)}`
+  // 9. Page token permissions — does it have pages_manage_metadata?
+  await probe("9_permissions",
+    `https://graph.facebook.com/v26.0/me/permissions?access_token=${encodeURIComponent(pageToken)}`
   );
 
   return json(results);
