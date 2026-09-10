@@ -24,7 +24,20 @@ export async function GET() {
     });
 
     if (existing) {
-      return json({ message: "✅ Automation already exists", automation: existing });
+      // Fix the automation so it actually fires on comments (matchAnyPost)
+      const needsFix = !existing.matchAnyPost || !existing.dmTriggerEnabled;
+      if (needsFix) {
+        const updated = await prisma.automation.update({
+          where: { id: existing.id },
+          data: {
+            matchAnyPost: true,
+            dmTriggerEnabled: true,
+            isActive: true,
+          },
+        });
+        return json({ message: "✅ Automation FIXED — matchAnyPost enabled!", automation: updated });
+      }
+      return json({ message: "✅ Automation already exists and is correctly configured", automation: existing });
     }
 
     const automation = await prisma.automation.create({
