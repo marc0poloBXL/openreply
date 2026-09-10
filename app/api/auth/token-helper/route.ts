@@ -193,6 +193,7 @@ export async function GET(req: Request) {
 
     // If both token types failed on direct link, try BM approach
     if (!linkResult.includes("success")) {
+      // Method B: Try via Business Manager
       try {
         const bmRes = await fetch(
           `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_instagram_accounts`,
@@ -211,8 +212,6 @@ export async function GET(req: Request) {
         } else {
           const bmMsg = bmData.error?.message?.slice(0, 150) || "unknown";
           linkResult += `<p class="error">❌ BM link also failed: ${bmMsg}</p>`;
-          // If the BM endpoint returned error 33 (doesn't exist), the page
-          // may not be in Business Manager at all. Suggest manual action.
           if (bmData.error?.error_subcode === 33) {
             linkResult += `<p style="font-size:13px;color:#666;">💡 The page may not be in Business Manager. Try linking from
               <a href="https://business.facebook.com/" target="_blank" style="color:#1877F2;">Business Settings</a>:
@@ -221,6 +220,64 @@ export async function GET(req: Request) {
         }
       } catch (e2: any) {
         linkResult += `<p class="error">❌ BM link threw: ${e2.message}</p>`;
+      }
+    }
+
+    // Method C: Reverse direction — assign page to IG account
+    if (!linkResult.includes("success")) {
+      try {
+        const assignRes = await fetch(
+          `https://graph.facebook.com/${API_VER}/${IG_ID}/assigned_pages`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: longLivedToken,
+              page_id: pageInfo.pageId,
+            }),
+          }
+        );
+        const assignData = await assignRes.json();
+        if (assignData.success) {
+          linkResult += `<p class="success">✅ @stoiczodiac linked via IG assigned_pages!</p>`;
+        } else {
+          linkResult += `<p class="error">❌ IG assigned_pages failed: ${assignData.error?.message?.slice(0, 150) || "unknown"}</p>`;
+        }
+      } catch (e3: any) {
+        linkResult += `<p class="error">❌ IG assigned_pages threw: ${e3.message}</p>`;
+      }
+    }
+
+    // Method D: IG assigned_pages with IGAA token on graph.instagram.com
+    if (!linkResult.includes("success")) {
+      try {
+        const stored = await prisma.instagramAccount.findUnique({
+          where: { id: IG_ACCOUNT_DB_ID },
+          select: { accessToken: true },
+        });
+        if (stored?.accessToken) {
+          const { decryptToken } = await import("@/lib/meta/oauth");
+          const igaaToken = decryptToken(stored.accessToken);
+          const assignRes = await fetch(
+            `https://graph.instagram.com/${API_VER.replace("v", "")}/${IG_ID}/assigned_pages`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                access_token: igaaToken,
+                page_id: pageInfo.pageId,
+              }),
+            }
+          );
+          const assignData = await assignRes.json();
+          if (assignData.success) {
+            linkResult += `<p class="success">✅ @stoiczodiac linked via IG assigned_pages (IGAA)!</p>`;
+          } else {
+            linkResult += `<p class="error">❌ IG assigned_pages (IGAA) failed: ${assignData.error?.message?.slice(0, 150) || "unknown"}</p>`;
+          }
+        }
+      } catch (e4: any) {
+        linkResult += `<p class="error">❌ IG assigned_pages (IGAA) threw: ${e4.message}</p>`;
       }
     }
 
