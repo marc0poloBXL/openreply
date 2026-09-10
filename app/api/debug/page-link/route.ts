@@ -75,6 +75,23 @@ export async function GET() {
     `https://graph.facebook.com/v26.0/me/permissions?access_token=${encodeURIComponent(pageToken)}`
   );
 
+  // 10. Check IG subscription status via IGAA on graph.instagram.com
+  if (igaaToken) {
+    await probe("10_ig_subscription_status",
+      `https://graph.instagram.com/v25.0/${IG_ID}/subscribed_apps?access_token=${encodeURIComponent(igaaToken)}`
+    );
+  }
+
+  // 11. Check app-level subscription status
+  await probe("11_app_subscription",
+    `https://graph.facebook.com/v26.0/1051360407668084/subscriptions?access_token=${APP_TOKEN}`
+  );
+
+  // 12. Try IG subscribed_apps via page token on graph.facebook.com
+  await probe("12_ig_sub_via_page_token",
+    `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps?access_token=${encodeURIComponent(pageToken)}`
+  );
+
   return json(results);
 }
 
