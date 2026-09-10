@@ -1,12 +1,10 @@
-/**
- * Seed Automation — creates a starter campaign for @stoiczodiac
- *
- * Only works if exactly one InstagramAccount is stored. This is a bootstrap
- * endpoint, not a general-purpose API — delete it after the first campaign
- * is created.
- */
 import { prisma } from "@/lib/db/client";
 import { generateReportShareSlug } from "@/lib/reports/share";
+
+export const maxDuration = 30;
+
+// eslint-disable-next-line prefer-const
+let count = 0;
 
 export async function GET() {
   try {
@@ -15,51 +13,62 @@ export async function GET() {
       include: { workspace: true },
     });
 
-    if (!account) {
-      return json({ error: "No Instagram account found in DB" });
-    }
+    if (!account) return json({ error: "No Instagram account found" });
 
     const existing = await prisma.automation.findFirst({
       where: { instagramAccountId: account.id },
     });
 
+    const changed: string[] = [];
+    const updates: Record<string, unknown> = {};
+
     if (existing) {
-      // Fix the automation so it actually fires on comments (matchAnyPost)
-      const needsFix = !existing.matchAnyPost || !existing.dmTriggerEnabled;
-      if (needsFix) {
+      if (!existing.matchAnyPost) {
+        updates.matchAnyPost = true;
+        changed.push("matchAnyPost: false→true");
+      }
+      if (!existing.dmTriggerEnabled) {
+        updates.dmTriggerEnabled = true;
+        changed.push("dmTriggerEnabled: false→true");
+      }
+      if (!existing.isActive) {
+        updates.isActive = true;
+        changed.push("isActive: false→true");
+      }
+
+      if (Object.keys(updates).length > 0) {
         const updated = await prisma.automation.update({
           where: { id: existing.id },
-          data: {
-            matchAnyPost: true,
-            dmTriggerEnabled: true,
-            isActive: true,
-          },
+          data: updates,
         });
-        return json({ message: "✅ Automation FIXED — matchAnyPost enabled!", automation: updated });
+        return json({
+          message: `✅ Automation fixed! Changes: ${changed.join(", ")}`,
+          automation: updated,
+        });
       }
-      return json({ message: "✅ Automation already exists and is correctly configured", automation: existing });
+
+      return json({
+        message: "✅ Automation is correctly configured — no changes needed",
+        automation: existing,
+      });
     }
 
+    // Create if none exists
     const automation = await prisma.automation.create({
       data: {
         name: "Stoic Auto-Reply",
-        goal: "Auto-reply to followers with a Stoic wisdom link",
+        goal: "Auto-reply to comments and DMs",
         workspaceId: account.workspaceId,
         instagramAccountId: account.id,
         matchAnyPost: true,
         matchAnyWord: true,
         keywords: [],
-        dmMessage: "Thanks for engaging {username}! Here's a Stoic thought for your sign. 🌿",
+        dmMessage: "Thanks {username}! Here's something for you 🌿",
         dmTriggerEnabled: true,
-        openingDmEnabled: true,
-        openingDmMessage: "👋 Hey {username}! Thanks for the comment. Tap the button and I'll send over a Stoic reflection for your zodiac sign.",
-        openingDmButtonLabel: "Send it! 🔮",
-        linkButtonLabel: "Get Stoic Wisdom",
-        followUpEnabled: true,
-        followUpMessage: "Hope that resonated {username}! New posts every day — follow along for more Stoic × zodiac content. 🦁",
-        followUpDelayMinutes: 30,
-        publicReplyEnabled: true,
-        publicReplyMessages: ["🌿 Thanks {username}! Check your DMs 🙏"],
+        openingDmEnabled: false,
+        requireFollow: false,
+        followUpEnabled: false,
+        publicReplyEnabled: false,
         isActive: true,
         wholeWordMatch: false,
         reportShareSlug: generateReportShareSlug(),
