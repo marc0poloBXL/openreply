@@ -4,10 +4,133 @@ import { decryptToken } from "@/lib/meta/oauth";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "1229304876940609";
 const PAGE_NAME = "Stoic Zodiac";
+const BM_ID = "2052016095704629";
 
 export async function GET() {
   const html = await buildPage();
   return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+export async function POST(req: Request) {
+  const formData = await req.formData();
+  const action = formData.get("action")?.toString();
+
+  if (action === "link-page") {
+    return handleForceLink();
+  }
+
+  // Default: just reload the GET view
+  return GET();
+}
+
+async function handleForceLink(): Promise<Response> {
+  const entries: string[] = [];
+  function log(msg: string) { entries.push(`<div>${msg}</div>`); }
+
+  try {
+    const account = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
+    if (!account) return errorResponse("No Instagram account found in database.");
+    if (!account.pageToken) return errorResponse("No page token stored — visit /api/auth/token-helper first.");
+
+    const pageToken = decryptToken(account.pageToken);
+
+    // Method 1: Direct page-to-IG link via page token
+    log(`<h3>Method 1: POST /${PAGE_ID}/instagram_accounts (page token)</h3>`);
+    let r = await fetch(
+      `https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
+      }
+    );
+    let d = await r.json();
+    log(`<p>Status: ${r.status} — ${JSON.stringify(d)}</p>`);
+
+    if (d.success) {
+      log(`<p class="success">✅ Direct link succeeded!</p>`);
+    } else {
+      log(`<p class="error">❌ Direct link failed: ${d.error?.message || "unknown"}</p>`);
+
+      // Method 2: Try with user token (long-lived, stored temporarily during token-helper flow)
+      // Since we don't store the user token, try via Business Manager owned_instagram_accounts
+      log(`<h3>Method 2: POST /${BM_ID}/owned_instagram_accounts (page token)</h3>`);
+      r = await fetch(
+        `https://graph.facebook.com/v26.0/${BM_ID}/owned_instagram_accounts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: pageToken,
+            instagram_account_id: IG_ID,
+          }),
+        }
+      );
+      d = await r.json();
+      log(`<p>Status: ${r.status} — ${JSON.stringify(d)}</p>`);
+
+      if (d.success) {
+        log(`<p class="success">✅ BM link succeeded!</p>`);
+      } else {
+        log(`<p class="error">❌ BM link also failed: ${d.error?.message || "unknown"}</p>`);
+
+        // Method 3: Try with IGAA token on graph.facebook.com
+        if (account.accessToken) {
+          const igaaToken = decryptToken(account.accessToken);
+          log(`<h3>Method 3: POST /${IG_ID}/subscribed_apps via IGAA on graph.facebook.com</h3>`);
+          r = await fetch(
+            `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                access_token: igaaToken,
+                subscribed_fields: "comments,messages",
+              }),
+            }
+          );
+          d = await r.json();
+          log(`<p>Status: ${r.status} — ${JSON.stringify(d)}</p>`);
+          if (d.success || d.id) {
+            log(`<p class="success">✅ IG subscribed via IGAA token!</p>`);
+          }
+        }
+      }
+    }
+
+    // Check result
+    log(`<hr><h3>🔍 Verifying link status</h3>`);
+    r = await fetch(
+      `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+    );
+    d = await r.json();
+    const igBiz = d.instagram_business_account as Record<string, unknown> | undefined;
+    if (igBiz && igBiz.id === IG_ID) {
+      log(`<p class="success">✅✅✅ Confirmed: @stoiczodiac IS linked to "${d.name}"!</p>`);
+    } else {
+      log(`<p class="error">❌ Still not linked. Page info: ${JSON.stringify(d)}</p>`);
+      log(`<p>You may need to link manually in <a href="https://business.facebook.com/" target="_blank">Facebook Business Suite</a>:
+        <ol>
+          <li>Go to Business Settings → Accounts → Pages</li>
+          <li>Select "Stoic Zodiac" page</li>
+          <li>Go to Settings → Instagram → Connect Account</li>
+          <li>Log into @stoiczodiac</li>
+        </ol>
+      </p>`);
+    }
+  } catch (e: any) {
+    return errorResponse(`Script threw: ${e.message}`);
+  }
+
+  return new Response(wrapHtml(`<h2>⚡ Force Link Result</h2>${entries.join("\n")}
+    <p><a href="/api/ig-link" class="btn">← Back to dashboard</a></p>`),
+    { headers: { "Content-Type": "text/html" } });
+}
+
+function errorResponse(msg: string): Response {
+  return new Response(wrapHtml(`<p class="error">${msg}</p>
+    <p><a href="/api/ig-link" class="btn">← Back</a></p>`),
+    { headers: { "Content-Type": "text/html" } });
 }
 
 async function buildPage(): Promise<string> {
@@ -46,6 +169,11 @@ async function buildPage(): Promise<string> {
     }
     if (!linkedToPage) {
       output += `<p class="error">❌ @stoiczodiac is NOT linked to any Facebook Page.</p>`;
+      output += `<p>Try the force-link button below to attempt linking via API:</p>`;
+      output += `<form method="post" action="/api/ig-link">
+        <input type="hidden" name="action" value="link-page">
+        <button type="submit" class="btn">⚡ Force Link IG to Page</button>
+      </form>`;
     }
   } else {
     output += `<p>No page token — can't check link status.</p>`;

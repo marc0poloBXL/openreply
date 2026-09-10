@@ -6,13 +6,18 @@
  * connected page, stores the page token in the database, and subscribes
  * webhooks — all in one step.
  * No CORS issues, no OAuth redirects.
+ *
+ * Page IDs (Stoic Zodiac):
+ * - Current (since ~Sep 2026): 1229304876940609
+ * - Old (deleted/merged): 61594011424463 (no longer exists)
  */
 
 const APP_ID = "1051360407668084";
 const APP_SECRET = "b2708ce0c790783fbf27c0dfcc0e1459";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
 const IG_ID = "17841438935909153";
-const PAGE_ID = "61594011424463";
+const PAGE_ID = "1229304876940609";
+const PAGE_ID_OLD = "61594011424463";
 const BM_ID = "2052016095704629";
 const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
 const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
@@ -50,10 +55,19 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Step 1: Graph API Explorer tokens are already long-lived (60 days).
-    // Use the raw token directly. The fb_exchange_token endpoint can silently
-    // swap it for a different token with fewer scopes, so skip that call.
-    const longLivedToken = userToken.trim();
+    // Step 1: Exchange short-lived Graph API Explorer token for 60-day token
+    const exchangeResp = await fetch(
+      `https://graph.facebook.com/${API_VER}/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${encodeURIComponent(userToken.trim())}`
+    );
+    const exchangeData = await exchangeResp.json();
+    const longLivedToken = exchangeData.access_token;
+    if (!longLivedToken) {
+      return new Response(htmlPage("❌ Exchange Failed",
+        `<p class="error">Token exchange failed: ${(exchangeData.error?.message || exchangeData.error || "unknown").substring(0, 200)}</p>
+         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+      ), { headers: { "content-type": "text/html" } });
+    }
 
     // Step 2: Try /me/accounts first
     const accountsResp = await fetch(
@@ -146,6 +160,7 @@ export async function GET(req: Request) {
     // Step 5: Try to link @stoiczodiac to the Stoic Zodiac page
     let linkResult = "";
     try {
+      // Method A: Direct page-to-IG link
       const linkRes = await fetch(
         `https://graph.facebook.com/${API_VER}/${pageInfo.pageId}/instagram_accounts`,
         {
@@ -157,13 +172,33 @@ export async function GET(req: Request) {
           }),
         }
       );
-      const linkData = await linkRes.json();
+      let linkData = await linkRes.json();
       if (linkData.success) {
         linkResult = `<p class="success">✅ @stoiczodiac linked to page via API!</p>`;
       } else {
-        const e = linkData.error || {};
-        linkResult = `<p class="error">❌ API link failed (code ${e.code}): ${e.message ? e.message.slice(0, 150) : "unknown"}</p>`;
-        if (e.error_user_msg) linkResult += `<p style="font-size:13px;color:#666;">${e.error_user_msg}</p>`;
+        linkResult = `<p class="error">❌ Direct link failed (code ${linkData.error?.code}): ${linkData.error?.message ? linkData.error.message.slice(0, 150) : "unknown"}</p>`;
+        // Method B: Try via Business Manager
+        try {
+          const bmRes = await fetch(
+            `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_instagram_accounts`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                access_token: pageInfo.pageToken.trim(),
+                instagram_account_id: IG_ID,
+              }),
+            }
+          );
+          const bmData = await bmRes.json();
+          if (bmData.success) {
+            linkResult += `<p class="success">✅ @stoiczodiac linked via Business Manager!</p>`;
+          } else {
+            linkResult += `<p class="error">❌ BM link also failed: ${bmData.error?.message?.slice(0, 150) || "unknown"}</p>`;
+          }
+        } catch (e2: any) {
+          linkResult += `<p class="error">❌ BM link threw: ${e2.message}</p>`;
+        }
       }
     } catch (e: any) {
       linkResult = `<p class="error">❌ Link attempt threw: ${e.message}</p>`;
@@ -302,8 +337,20 @@ export async function POST(req: Request) {
 }
 
 function findStoicPage(pages: any[]) {
+  // Prefer exact page ID match first
   for (const p of pages) {
-    if (p.instagram_business_account?.id === IG_ID || p.id === PAGE_ID || p.name?.toLowerCase().includes("stoic")) {
+    if (p.id === PAGE_ID) {
+      return { pageId: p.id, pageToken: p.access_token, pageName: p.name };
+    }
+  }
+  for (const p of pages) {
+    if (p.instagram_business_account?.id === IG_ID) {
+      return { pageId: p.id, pageToken: p.access_token, pageName: p.name };
+    }
+  }
+  // Fallback: try old page ID or name match
+  for (const p of pages) {
+    if (p.id === PAGE_ID_OLD || p.name?.toLowerCase().includes("stoic")) {
       return { pageId: p.id, pageToken: p.access_token, pageName: p.name };
     }
   }
