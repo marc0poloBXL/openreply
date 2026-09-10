@@ -4,7 +4,7 @@ import { decryptToken } from "@/lib/meta/oauth";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "1229304876940609";
 const PAGE_ID_OLD = "61594011424463";
-const BMS = ["2052016095704629", "5180791675279566"];
+const APP_TOKEN = "1051360407668084|b2708ce0c790783fbf27c0dfcc0e1459";
 
 export async function GET() {
   const account = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
@@ -13,6 +13,7 @@ export async function GET() {
   }
 
   const pageToken = decryptToken(account.pageToken);
+  const igaaToken = account.accessToken ? decryptToken(account.accessToken) : null;
   const results: Record<string, unknown> = {};
 
   async function probe(label: string, url: string) {
@@ -24,34 +25,54 @@ export async function GET() {
     }
   }
 
-  // 1. Current page — do we have instagram_business_account?
-  await probe("current_page",
-    `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,about,category,tasks,connected_instagram_account{id,username},instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+  // 1. Current page — probe with clean fields
+  await probe("1_page",
+    `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,about,category,connected_instagram_account{id,username},instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
   );
 
-  // 2. All pages this token manages
-  await probe("me_accounts",
-    `https://graph.facebook.com/v26.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+  // 2. Same page with IGAA token (if we have it)
+  if (igaaToken) {
+    await probe("2_page_via_igaa",
+      `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(igaaToken)}`
+    );
+  }
+
+  // 3. Same page with app token
+  await probe("3_page_via_app",
+    `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${APP_TOKEN}`
   );
 
-  // 3. Token owner
-  await probe("token_owner",
+  // 4. Token /me
+  await probe("4_token_owner",
     `https://graph.facebook.com/v26.0/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
   );
 
-  // 4. Old page
-  await probe("old_page",
-    `https://graph.facebook.com/v26.0/${PAGE_ID_OLD}?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
+  // 5. Old page
+  await probe("5_old_page",
+    `https://graph.facebook.com/v26.0/${PAGE_ID_OLD}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
   );
 
-  // 5. Try the IG account directly
-  await probe("ig_account",
-    `https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username&access_token=${encodeURIComponent(pageToken)}`
+  // 6. IG account via app token (tries to find which page it's linked to)
+  await probe("6_ig_via_app",
+    `https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username,profile_picture_url&access_token=${APP_TOKEN}`
   );
 
-  // 6. Check if IG is directly accessible as a page (it sometimes is for linked accounts)
-  await probe("ig_as_page",
-    `https://graph.facebook.com/v26.com/${IG_ID}?fields=id,username,name&access_token=${encodeURIComponent(pageToken)}`
+  // 7. IG account via IGAA on graph.instagram.com
+  if (igaaToken) {
+    await probe("7_ig_via_igaa",
+      `https://graph.instagram.com/v25.0/me?fields=id,username,name,account_type&access_token=${encodeURIComponent(igaaToken)}`
+    );
+  }
+
+  // 8. Look up IG via Instagram Business Discovery on the page
+  // This field is available on pages with IG connected
+  await probe("8_discovery",
+    `https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,instagram_accounts{id,username}&access_token=${encodeURIComponent(pageToken)}`
+  );
+
+  // 9. Page feed — check if IG media appears (happens when linked)
+  await probe("9_feed",
+    `https://graph.facebook.com/v26.0/${PAGE_ID}/feed?fields=id,message,created_time&limit=3&access_token=${encodeURIComponent(pageToken)}`
   );
 
   return json(results);
