@@ -6,6 +6,8 @@ const PAGE_ID = "1229304876940609";
 
 export const maxDuration = 60;
 
+// Env check: needs FACEBOOK_APP_ID and FACEBOOK_APP_SECRET for the live app
+
 export async function GET() {
   const account = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
   if (!account) return json({ error: "No account" });
@@ -13,6 +15,14 @@ export async function GET() {
   const igaaToken = account.accessToken ? decryptToken(account.accessToken) : null;
   const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
   const log: Record<string, unknown> = {};
+
+  // Show what env vars are actually set (prefix only for secret)
+  log.env_check = {
+    app_id: process.env.FACEBOOK_APP_ID,
+    app_secret_prefix: process.env.FACEBOOK_APP_SECRET ? process.env.FACEBOOK_APP_SECRET.substring(0,6) + "..." : "NOT SET",
+    app_secret_length: process.env.FACEBOOK_APP_SECRET?.length || 0,
+    app_token_prefix: appToken.substring(0,15) + "...",
+  };
 
   async function postProbe(label: string, url: string, body: Record<string, unknown>) {
     try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); log[label] = await r.json(); }
