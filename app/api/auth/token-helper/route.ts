@@ -234,12 +234,39 @@ export async function GET(req: Request) {
       } catch { subErrors.push("app token: threw"); }
     }
 
-    if (subscribed) {
-      await prisma.instagramAccount.update({
-        where: { id: IG_ACCOUNT_DB_ID },
-        data: { webhookSubscribed: subscribed },
-      });
-    }
+    // Try 4: graph.instagram.com with stored IGAA token (known working path)
+	    if (!subscribed) {
+	      try {
+	        const stored = await prisma.instagramAccount.findUnique({
+	          where: { id: IG_ACCOUNT_DB_ID },
+	          select: { accessToken: true },
+	        });
+	        if (stored?.accessToken) {
+	          const { decryptToken } = await import("@/lib/meta/oauth");
+	          const igaaToken = decryptToken(stored.accessToken);
+	          const igSub = await fetch(
+	            `https://graph.instagram.com/v25.0/${IG_ID}/subscribed_apps`,
+	            {
+	              method: "POST",
+	              headers: { "Content-Type": "application/json" },
+	              body: JSON.stringify({
+	                access_token: igaaToken,
+	                subscribed_fields: "comments,messages",
+	              }),
+	            }
+	          );
+	          const igResult = await igSub.json();
+	          subscribed = Boolean(igResult.success || igResult.id);
+	          if (!subscribed) subErrors.push(`IGAA on instagram.com: ${igResult.error?.message?.substring(0, 100) || "?"}`);
+	        }
+	      } catch (e: any) { subErrors.push(`IGAA: ${e.message || "threw"}`); }
+	    }
+      if (subscribed) {
+        await prisma.instagramAccount.update({
+          where: { id: IG_ACCOUNT_DB_ID },
+          data: { webhookSubscribed: subscribed },
+        });
+      }
 
     return new Response(htmlPage("✅ Done!",
       `<div class="success">

@@ -38,15 +38,24 @@
 2. `app/api/instagram/resubscribe/route.ts` — uses Page token (when available) instead of IGAA token for webhook subscription
 3. **2026-09-07: Reverted pageToken preference** — all messaging/media routes now use IGAA (accessToken) again. The pageToken can't access IG resources because the IG account is not linked to a FB page. Added `/api/auth/igaa-token` for IGAA token refresh.
 
-### Remaining Issue
-- ~~Webhook subscription still shows "pending"~~ ✅ **RESOLVED 2026-09-06**
-- ~~Need to subscribe `17841438935909153/subscribed_apps` with the Page token~~ ✅ App-level webhook subscription active
-- ~~Need a fresh Page Access Token~~ ✅ Generated via Business Manager "marc jelen" (id: 2052016095704629) owned_pages
-- ~~Store token in DB~~ ✅ Encrypted in `InstagramAccount.pageToken`, expires 2026-11-01
-- ~~**IMPORTANT: IGAA token is expired** — the token that powers DMs, inbox, and media listing was last valid 2026-09-05. It cannot be refreshed after expiry. A fresh IGAA token must be pasted at `/api/auth/igaa-token` (see below).~~ ✅ **RENEWED 2026-09-08** via OAuth — valid ~60 days
-- **@stoiczodiac is NOT linked to a Facebook Page** — our `/me/accounts` check found no `instagram_business_account` link. This means the page token (stored in DB) cannot access IG resources. To fix: in Instagram app → Account Center → Linked accounts → Facebook, connect to the "Stoic Zodiac" page. Blocking comment reading via graph.facebook.com but NOT blocking DM/conversation flows (those use IGAA on graph.instagram.com).
-- App-level webhook (1051360407668084/subscriptions) active for instagram → comments, messages → callback URL: https://openreply-zeta-ruby.vercel.app/api/webhook
-- Verify token: `stoiczodiac-webhook-2026`
+### Current Status (2026-09-10)
+- ✅ **IG linked to FB Page** — confirmed via Facebook Page Settings UI (user confirmed "Connected Instagram: Stoic Zodiac @stoiczodiac")
+- ✅ **Page token stored** — refreshed via token-helper 2026-09-10, valid until Nov 4. Has `pages_manage_metadata` scope.
+- ✅ **IGAA token valid** — powers DMs, inbox, media listing. Valid ~60 days from last OAuth refresh.
+- ✅ **IG account subscribed to webhooks** — `POST /{ig-id}/subscribed_apps` via IGAA token returned `success: true` on 2026-09-10
+- ✅ **App-level webhook active** — app 1051360407668084 subscribed for `instagram` → `comments, messages` at callback URL `https://openreply-zeta-ruby.vercel.app/api/webhook`, verify token `stoiczodiac-webhook-2026`
+- ❌ **graph.instagram.com returns 0 comments** — all 5 API variants tested (v21-v25, with/without `from` fields) return empty data silently. This is a confirmed API limitation for Business accounts.
+- ❌ **graph.facebook.com with page token returns error 33** — "does not exist, cannot be loaded." The IG is linked in the UI but NOT at the API level (no `instagram_business_account` field on the page). The page token cannot access IG resources.
+- ❌ **graph.facebook.com with IGAA token** — "Cannot parse access token" (IGAA tokens don't work on FB graph)
+- ✅ **Webhook push path IS the primary path for comment delivery** — app-level subscription delivers events; individual IG subscription should now deliver comment events.
+- ⚠️ **Polling fallback (comment-reconciler.ts) won't work** — uses page token for graph.facebook.com which returns error 33. Falls back to IGAA for graph.instagram.com which returns 0 comments.
+
+### Key Insight
+The webhook push path is the ONLY working path for comment delivery. The polling reconciler at `lib/polling/comment-reconciler.ts` is a safety net that currently cannot read comments via either API. If webhooks miss a comment, it won't be caught by polling.
+
+### Token Types
+- **IGAA token** (prefix: IGAA...): Instagram Business Login token. Works with `graph.instagram.com`. Used for: DMs, conversations, media listing, subscribed_apps.
+- **Page token** (prefix: EA...): Facebook Page token. Works with `graph.facebook.com`. Used for: webhook subscription (failed), comment reading (error 33). Currently can't access IG resources.
 
 ### Token Refresh Process (✅ Works)
 
