@@ -18,7 +18,7 @@ const PAGE_ID = "1229304876940609";
 const FB_APP_ID = "1051360407668084";
 const FB_APP_SECRET = process.env.FACEBOOK_APP_SECRET || "";
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || "2616058292165458";
-const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || "6f741ede9465e7fc28b8e601daf8dc92";
+const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4";
 const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
 const VERIFY_TOKEN = "stoiczodiac-webhook-2026";
 
