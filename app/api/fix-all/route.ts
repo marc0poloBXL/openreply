@@ -32,9 +32,12 @@ async function fetchGraph(url: string, body?: Record<string, string>) {
   return { status: r.status, body: await r.json() };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const results: Record<string, unknown> = {};
   const errors: string[] = [];
+  const url = new URL(req.url);
+  const newPageToken = url.searchParams.get("page_token");
+  const newUserToken = url.searchParams.get("user_token");
 
   // 1. Read tokens
   const account = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
@@ -55,6 +58,37 @@ export async function GET() {
 
   results.hasIgaaToken = Boolean(igaaToken);
   results.hasPageToken = Boolean(pageToken);
+
+  // If new tokens provided, store them
+  if (newPageToken) {
+    try {
+      const { encryptToken } = await import("@/lib/meta/oauth");
+      const encrypted = encryptToken(newPageToken.trim());
+      await prisma.instagramAccount.update({
+        where: { id: account.id },
+        data: { pageToken: encrypted, tokenExpiresAt: new Date(Date.now() + 55 * 24 * 60 * 60 * 1000) },
+      });
+      pageToken = newPageToken;
+      results.hasPageToken = true;
+      results.newPageTokenStored = true;
+    } catch (e: any) {
+      errors.push(`store_page_token: ${e.message}`);
+    }
+  }
+
+  if (newUserToken) {
+    try {
+      const { encryptToken } = await import("@/lib/meta/oauth");
+      const encrypted = encryptToken(newUserToken.trim());
+      await prisma.instagramAccount.update({
+        where: { id: account.id },
+        data: { accessToken: encrypted, tokenExpiresAt: new Date(Date.now() + 55 * 24 * 60 * 60 * 1000) },
+      });
+      results.newUserTokenStored = true;
+    } catch (e: any) {
+      errors.push(`store_user_token: ${e.message}`);
+    }
+  }
 
   // 2. Check IG account type via graph.instagram.com (IGAA token)
   if (igaaToken) {
@@ -175,8 +209,9 @@ export async function GET() {
     }
   }
 
-  // 10. Try linking the page with the correct Business Account ID
+  // 10. Try linking the page with the page token (has pages_manage_metadata confirmed)
   if (pageToken) {
+    // Try with IG_BIZ_ID (graph.facebook.com identifier)
     try {
       const r = await fetchGraph(
         `https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`,
@@ -189,10 +224,51 @@ export async function GET() {
     } catch (e: any) {
       errors.push(`link_biz: ${e.message}`);
     }
+
+    // Try with IG_ID (graph.instagram.com identifier)
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`,
+        {
+          access_token: pageToken,
+          instagram_account_id: IG_ID,
+        }
+      );
+      results.linkWithIGID = r.body;
+    } catch (e: any) {
+      errors.push(`link_igid: ${e.message}`);
+    }
+
+    // Try assigned_pages (reverse direction)
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/${IG_BIZ_ID}/assigned_pages`,
+        {
+          access_token: pageToken,
+          page_id: PAGE_ID,
+        }
+      );
+      results.assignPageViaBiz = r.body;
+    } catch (e: any) {
+      errors.push(`assign_biz: ${e.message}`);
+    }
+
+    // Try assigned_pages with IG_ID
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/${IG_ID}/assigned_pages`,
+        {
+          access_token: pageToken,
+          page_id: PAGE_ID,
+        }
+      );
+      results.assignPageViaIG = r.body;
+    } catch (e: any) {
+      errors.push(`assign_ig: ${e.message}`);
+    }
   }
 
-  // 11. Try linking with user token (in case page token doesn't have full scope)
-  // We need the user token for this. Let's try with the FB app token instead.
+  // 10b. Try link with user token if we have one (from query param)
   try {
     const r = await fetchGraph(
       `https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`,
