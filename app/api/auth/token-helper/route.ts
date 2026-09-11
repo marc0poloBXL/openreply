@@ -37,33 +37,33 @@ export async function GET(req: Request) {
   }
 
   if (!userToken) {
-    // Build Facebook Login URL
-    const fbLoginScope = encodeURIComponent("pages_show_list,pages_read_engagement,pages_manage_metadata,business_management");
-    const fbLoginUrl = `https://www.facebook.com/${API_VER}/dialog/oauth?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(BASE + "/api/auth/token-helper")}&state=fb_link_${Date.now()}&scope=${fbLoginScope}&response_type=code`;
+    const explorerUrl = `https://developers.facebook.com/tools/explorer/${APP_ID}/`;
 
     return new Response(htmlPage("Get Facebook Page Token",
       `<h2>Get a Page Token for @stoiczodiac</h2>
 
-       <p style="text-align:center;margin:24px 0;">
-         <a href="${fbLoginUrl}" class="btn" style="display:inline-block;font-size:16px;padding:14px 28px;">🔗 Login with Facebook</a>
-       </p>
-       <p style="text-align:center;color:#666;font-size:13px;">
-         Click once → authorize → token stored automatically.<br>
-         No need to find tokens or visit the developer dashboard.
-       </p>
+       <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:16px 0;font-size:13px;">
+         <strong>⚠️ Facebook Login can't grant <code>pages_manage_metadata</code> for this app.</strong><br>
+         The <strong>Graph API Explorer</strong> (developer tool) is the only way — one page, fixed layout:
+       </div>
 
-       <hr style="margin:24px 0;">
-       <p style="color:#888;font-size:13px;text-align:center;">
-         <strong>OR</strong> paste a token manually from the
-         <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a>:
-       </p>
-       <form method="get" action="" style="text-align:center;">
+       <ol style="font-size:15px;line-height:1.8;">
+         <li><strong>Open</strong> → <a href="${explorerUrl}" target="_blank" style="color:#1877F2;font-weight:600;">Graph API Explorer</a>
+           <span style="color:#666;font-size:13px;">(opens pre-configured for our app)</span></li>
+         <li><strong>Dropdown</strong> at top: confirm it says <strong>"User Token"</strong></li>
+         <li>Click <strong>"Add permissions"</strong> → search for → add <code style="background:#e8e8e8;padding:2px 6px;border-radius:4px;">pages_manage_metadata</code></li>
+         <li>Click <strong>"Generate Access Token"</strong> → approve the popup</li>
+         <li><strong>Copy</strong> the <code>EAA...</code> token → paste below</li>
+       </ol>
+
+       <form method="get" action="" style="text-align:center;margin-top:20px;">
          <input type="text" name="token" placeholder="Paste EAA... token here"
-                style="width:80%;padding:10px;border:1px solid #ccc;border-radius:6px;font-family:monospace;font-size:13px;box-sizing:border-box;">
-         <button type="submit" class="btn" style="margin-top:8px;">🔍 Get Page Token</button>
+                style="width:90%;padding:12px;border:2px solid #1877F2;border-radius:8px;font-family:monospace;font-size:14px;box-sizing:border-box;">
+         <button type="submit" class="btn" style="display:inline-block;margin-top:10px;font-size:16px;padding:12px 28px;">🔍 Get Page Token</button>
        </form>
-       <p style="color:#666;font-size:13px;margin-top:12px;text-align:center;">
-         ⚡ The system will exchange your token for a 60-day token and store it automatically.
+       <p style="color:#666;font-size:13px;text-align:center;">
+         ⚡ The system will exchange the token for 60 days, store it,<br>
+         link the IG account to the page, and subscribe webhooks — automatically.
        </p>`
     ), { headers: { "content-type": "text/html" } });
   }
