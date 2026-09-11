@@ -15,13 +15,12 @@
 const APP_ID = "1051360407668084";
 const APP_SECRET = "b2708ce0c790783fbf27c0dfcc0e1459";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
+const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://openreply-zeta-ruby.vercel.app";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "1229304876940609";
 const PAGE_ID_OLD = "61594011424463";
 const BM_ID = "2052016095704629";
 const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
-const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
-const VERIFY_TOKEN = "stoiczodiac-webhook-2026";
 
 import { encryptToken } from "@/lib/meta/oauth";
 import { prisma } from "@/lib/db/client";
@@ -29,46 +28,143 @@ import { prisma } from "@/lib/db/client";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const userToken = url.searchParams.get("token");
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+
+  // Handle Facebook Login OAuth redirect (code from Facebook)
+  if (code) {
+    return handleOAuthCode(code, state, req);
+  }
 
   if (!userToken) {
+    // Build Facebook Login URL
+    const fbLoginScope = encodeURIComponent("pages_show_list,pages_read_engagement,pages_manage_metadata,business_management");
+    const fbLoginUrl = `https://www.facebook.com/${API_VER}/dialog/oauth?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(BASE + "/api/auth/token-helper")}&state=fb_link_${Date.now()}&scope=${fbLoginScope}&response_type=code`;
+
     return new Response(htmlPage("Get Facebook Page Token",
       `<h2>Get a Page Token for @stoiczodiac</h2>
-       <p><strong>Step 1:</strong> Go to the Graph API Explorer and get your User Token:</p>
-       <p><a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" class="btn-link">https://developers.facebook.com/tools/explorer/${APP_ID}/</a></p>
-       <ul>
-         <li>Make sure the dropdown says <strong>"User Token"</strong> (not Page Token)</li>
-         <li>Add these permissions: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>business_management</code>, <code>pages_manage_metadata</code></li>
-         <li>Click "Generate Access Token" and authorize all the popups</li>
-         <li>Click "Add" next to permissions to add them</li>
-       </ul>
-       <p><strong>Step 2:</strong> Paste the token (EAA...) here:</p>
-       <form method="get" action="">
+
+       <p style="text-align:center;margin:24px 0;">
+         <a href="${fbLoginUrl}" class="btn" style="display:inline-block;font-size:16px;padding:14px 28px;">🔗 Login with Facebook</a>
+       </p>
+       <p style="text-align:center;color:#666;font-size:13px;">
+         Click once → authorize → token stored automatically.<br>
+         No need to find tokens or visit the developer dashboard.
+       </p>
+
+       <hr style="margin:24px 0;">
+       <p style="color:#888;font-size:13px;text-align:center;">
+         <strong>OR</strong> paste a token manually from the
+         <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a>:
+       </p>
+       <form method="get" action="" style="text-align:center;">
          <input type="text" name="token" placeholder="Paste EAA... token here"
-                style="width:100%;padding:10px;border:1px solid #ccc;border-radius:6px;font-family:monospace;font-size:13px;box-sizing:border-box;">
-         <button type="submit" class="btn">🔍 Get Page Token</button>
+                style="width:80%;padding:10px;border:1px solid #ccc;border-radius:6px;font-family:monospace;font-size:13px;box-sizing:border-box;">
+         <button type="submit" class="btn" style="margin-top:8px;">🔍 Get Page Token</button>
        </form>
-       <p style="color:#666;font-size:13px;margin-top:16px;">
+       <p style="color:#666;font-size:13px;margin-top:12px;text-align:center;">
          ⚡ The system will exchange your token for a 60-day token and store it automatically.
-         You only need to do this when the token expires (every ~2 months).
        </p>`
     ), { headers: { "content-type": "text/html" } });
   }
 
+  // If we get here with a userToken, proceed with the existing exchange flow
+  return handleTokenPaste(userToken.trim(), req);
+}
+
+/**
+ * Handle OAuth code from Facebook Login redirect.
+ * Exchanges code → short token → long token, then continues with the
+ * page-finding and subscribe flow.
+ */
+async function handleOAuthCode(code: string, state: string | null, req: Request): Promise<Response> {
   try {
-    // Step 1: Exchange short-lived Graph API Explorer token for 60-day token
+    // Exchange code for short-lived access token
+    const tokenUrl = new URL(`https://graph.facebook.com/${API_VER}/oauth/access_token`);
+    tokenUrl.searchParams.set("client_id", APP_ID);
+    tokenUrl.searchParams.set("redirect_uri", BASE + "/api/auth/token-helper");
+    tokenUrl.searchParams.set("client_secret", APP_SECRET);
+    tokenUrl.searchParams.set("code", code);
+    const tokenResp = await fetch(tokenUrl.toString());
+    const tokenData = await tokenResp.json();
+    const shortToken = tokenData.access_token;
+    if (!shortToken) {
+      return new Response(htmlPage("❌ OAuth Failed",
+        `<p class="error">Code exchange failed: ${(tokenData.error?.message || tokenData.error || "unknown").substring(0, 200)}</p>
+         <p>This usually means the redirect URI isn't registered in the app. Try the paste-a-token method instead.</p>
+         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+      ), { headers: { "content-type": "text/html" } });
+    }
+
+    // Exchange short-lived token for 60-day token
+    const longToken = await exchangeForLongToken(shortToken);
+    if (!longToken) {
+      return new Response(htmlPage("❌ Exchange Failed",
+        `<p class="error">Could not extend token lifespan.</p>
+         <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+      ), { headers: { "content-type": "text/html" } });
+    }
+
+    // Use the same page-finding and subscribe flow as handleTokenPaste
+    return processLongToken(longToken, req);
+  } catch (e: any) {
+    return new Response(htmlPage("❌ Error",
+      `<p class="error">${e.message}</p>
+       <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+    ), { headers: { "content-type": "text/html" } });
+  }
+}
+
+/**
+ * Exchange a short-lived token for a 60-day long-lived token.
+ */
+async function exchangeForLongToken(shortToken: string): Promise<string | null> {
+  try {
     const exchangeResp = await fetch(
       `https://graph.facebook.com/${API_VER}/oauth/access_token?grant_type=fb_exchange_token` +
-      `&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${encodeURIComponent(userToken.trim())}`
+      `&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${encodeURIComponent(shortToken)}`
     );
     const exchangeData = await exchangeResp.json();
-    const longLivedToken = exchangeData.access_token;
+    return exchangeData.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Process a pasted token: exchange for long-lived, find page, store, link, subscribe.
+ */
+async function handleTokenPaste(rawToken: string, req: Request): Promise<Response> {
+  try {
+    // Exchange for 60-day token
+    const longLivedToken = await exchangeForLongToken(rawToken.trim());
     if (!longLivedToken) {
+      // Try again and capture the actual error
+      const exchangeResp = await fetch(
+        `https://graph.facebook.com/${API_VER}/oauth/access_token?grant_type=fb_exchange_token` +
+        `&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${encodeURIComponent(rawToken.trim())}`
+      );
+      const exchangeData = await exchangeResp.json();
       return new Response(htmlPage("❌ Exchange Failed",
         `<p class="error">Token exchange failed: ${(exchangeData.error?.message || exchangeData.error || "unknown").substring(0, 200)}</p>
          <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
       ), { headers: { "content-type": "text/html" } });
     }
+    return processLongToken(longLivedToken, req);
+  } catch (e: any) {
+    return new Response(htmlPage("❌ Error",
+      `<p class="error">${e.message}</p>
+       <p><a href="?" style="color:#1877F2;">← Try again</a></p>`
+    ), { headers: { "content-type": "text/html" } });
+  }
+}
 
+/**
+ * Process a 60-day long-lived token: find page, store page token, link IG, subscribe webhooks.
+ * Shared by both Facebook Login OAuth and Graph API Explorer paste flows.
+ */
+async function processLongToken(longLivedToken: string, req: Request): Promise<Response> {
+  try {
     // Step 2: Try /me/accounts first
     const accountsResp = await fetch(
       `https://graph.facebook.com/${API_VER}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(longLivedToken)}`
