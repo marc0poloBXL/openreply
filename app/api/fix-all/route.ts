@@ -324,11 +324,26 @@ export async function GET(req: Request) {
     }
   }
 
-  // 15. Check if IG App already has webhook subscriptions
-  // The FB App (1051360407668084) already has the webhook callback.
-  // If the IG account subscribes to FB App, events go to FB App's callback.
-  // But if it subscribed via IGAA token, events go to Instagram App (2616058292165458).
-  // Let's check what the Instagram App's subscriptions look like.
+  // 15. Try setting IG App callback URL using IGAA token (it's an IG App user token)
+  if (igaaToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/${IG_APP_ID}/subscriptions`,
+        {
+          access_token: igaaToken,
+          object: "instagram",
+          callback_url: CALLBACK_URL,
+          verify_token: VERIFY_TOKEN,
+          fields: "comments,messages",
+        }
+      );
+      results.igAppSetupViaIGAA = r.body;
+    } catch (e: any) {
+      errors.push(`ig_app_igaa: ${e.message}`);
+    }
+  }
+
+  // 16. Check FB App subscriptions final
   try {
     const r = await fetchGraph(
       `https://graph.facebook.com/v26.0/${FB_APP_ID}/subscriptions?access_token=${encodeURIComponent(fbAppToken)}`
