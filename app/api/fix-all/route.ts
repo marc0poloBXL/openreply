@@ -21,6 +21,8 @@ const IG_APP_ID = process.env.INSTAGRAM_APP_ID || "2616058292165458";
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4";
 const CALLBACK_URL = "https://openreply-zeta-ruby.vercel.app/api/webhook";
 const VERIFY_TOKEN = "stoiczodiac-webhook-2026";
+const BM_ID = "2052016095704629";
+const SYSTEM_USER_ID = "61594008092430";
 
 async function fetchGraph(url: string, body?: Record<string, string>) {
   const opts: RequestInit = { method: body ? "POST" : "GET", headers: {} };
@@ -382,6 +384,47 @@ export async function GET(req: Request) {
     results.fbAppSubscriptionsFinal = r.body;
   } catch (e: any) {
     errors.push(`fb_subs_final: ${e.message}`);
+  }
+
+  // 18. Try to add FB App to Business Portfolio via API (using user token with business_management)
+  const businessToken = url.searchParams.get("business_token") || url.searchParams.get("user_token") || newUserToken;
+  if (businessToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${BM_ID}/apps`,
+        {
+          app_id: FB_APP_ID,
+          access_token: businessToken,
+        }
+      );
+      results.addAppToBusiness = r.body;
+
+      // If success, try subscribing with FB App token now
+      const addOk = !(r.body as any).error;
+      results.addAppSuccess = addOk;
+
+      // After linking, try subscribing IG Biz ID to FB App
+      const subR = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}/subscribed_apps`,
+        {
+          access_token: fbAppToken,
+          subscribed_fields: "comments,messages",
+        }
+      );
+      results.subscribeAfterBizLink = subR.body;
+
+      // Also try with IG_ID
+      const subR2 = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_ID}/subscribed_apps`,
+        {
+          access_token: fbAppToken,
+          subscribed_fields: "comments,messages",
+        }
+      );
+      results.subscribeAfterBizLinkIGID = subR2.body;
+    } catch (e: any) {
+      errors.push(`biz_link: ${e.message}`);
+    }
   }
 
   results.errors = errors;
