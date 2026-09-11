@@ -343,7 +343,38 @@ export async function GET(req: Request) {
     }
   }
 
-  // 16. Check FB App subscriptions final
+  // 16. Try exchanging IGAA token for FB token (cross-app exchange)
+  if (igaaToken) {
+    try {
+      // Try using IGAA token on FB App's exchange endpoint
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/oauth/access_token?grant_type=fb_exchange_token` +
+        `&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${encodeURIComponent(igaaToken)}`
+      );
+      results.igaaToFBExchange = r.body;
+      // If we got a token back, try to use it
+      const crossToken = (r.body as any).access_token;
+      if (crossToken) {
+        results.igaaCrossTokenPrefix = crossToken.substring(0, 20) + '...';
+        // Try subscribing IG with this cross-token
+        const sub = await fetchGraph(
+          `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps`,
+          { access_token: crossToken, subscribed_fields: "comments,messages" }
+        );
+        results.igaaCrossSubscribe = sub.body;
+        // Try linking with this cross-token
+        const link = await fetchGraph(
+          `https://graph.facebook.com/v26.0/${PAGE_ID}/instagram_accounts`,
+          { access_token: crossToken, instagram_account_id: IG_BIZ_ID }
+        );
+        results.igaaCrossLink = link.body;
+      }
+    } catch (e: any) {
+      errors.push(`igaa_xchg: ${e.message}`);
+    }
+  }
+
+  // 17. Check FB App subscriptions final
   try {
     const r = await fetchGraph(
       `https://graph.facebook.com/v26.0/${FB_APP_ID}/subscriptions?access_token=${encodeURIComponent(fbAppToken)}`
