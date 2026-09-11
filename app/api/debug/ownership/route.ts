@@ -97,11 +97,19 @@ export async function GET() {
     access_token: appToken, instagram_account_id: IG_ID,
   });
 
-  // === 10. Check the page's assigned business with app token ===
-  try {
-    const r = await fetch(`https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,business&access_token=${encodeURIComponent(appToken)}`);
-    log.page_business_via_app = await r.json();
-  } catch (e: any) { log.page_business_via_app = { error: e.message }; }
+  // === 10. Check IG account's business info with IGAA token ===
+  if (igaaToken) {
+    try {
+      // See which BM owns the IG account
+      const r = await fetch(`https://graph.instagram.com/v25.0/${IG_ID}?fields=id,username,business_discovery.username('stoiczodiac'){id}&access_token=${encodeURIComponent(igaaToken)}`);
+      log.ig_business = await r.json();
+    } catch (e: any) { log.ig_business = { error: e.message }; }
+    // Try the same on graph.facebook.com (won't work but let's see)
+    try {
+      const r = await fetch(`https://graph.facebook.com/v26.0/${IG_ID}?fields=id,username,business&access_token=${encodeURIComponent(appToken)}`);
+      log.ig_business_via_app = await r.json();
+    } catch (e: any) { log.ig_business_via_app = { error: e.message }; }
+  }
 
   return json(log);
 }
