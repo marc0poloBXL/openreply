@@ -72,15 +72,35 @@ export async function GET() {
     });
   }
 
-  // === 7. Final: check BM IG accounts ===
+  // === 7. Try BM alternative endpoints with page token ===
   if (pageToken) {
+    // client_pages — pages the BM owns
     for (const bm of ["2052016095704629", "5180791675279566", "9824014651061253"]) {
       try {
-        const r = await fetch(`https://graph.facebook.com/v26.0/${bm}/owned_instagram_accounts?fields=id,username,name&access_token=${encodeURIComponent(pageToken)}`);
-        log[`bm_${bm}_owned`] = await r.json();
-      } catch (e: any) { log[`bm_${bm}_owned`] = { error: e.message }; }
+        const r = await fetch(`https://graph.facebook.com/v26.0/${bm}/client_pages?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`);
+        log[`bm_${bm}_client_pages`] = await r.json();
+      } catch (e: any) { log[`bm_${bm}_client_pages`] = { error: e.message }; }
     }
   }
+
+  // === 8. Try BM endpoints with app token (different auth context) ===
+  for (const bm of ["2052016095704629"]) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v26.0/${bm}/owned_instagram_accounts?fields=id,username,name&access_token=${encodeURIComponent(appToken)}`);
+      log[`bm_${bm}_owned_via_app`] = await r.json();
+    } catch (e: any) { log[`bm_${bm}_owned_via_app`] = { error: e.message }; }
+  }
+
+  // === 9. Try linking IG to BM via app token ===
+  await postProbe("link_ig_to_bm_via_app", `https://graph.facebook.com/v26.0/2052016095704629/owned_instagram_accounts`, {
+    access_token: appToken, instagram_account_id: IG_ID,
+  });
+
+  // === 10. Check the page's assigned business with app token ===
+  try {
+    const r = await fetch(`https://graph.facebook.com/v26.0/${PAGE_ID}?fields=id,name,business&access_token=${encodeURIComponent(appToken)}`);
+    log.page_business_via_app = await r.json();
+  } catch (e: any) { log.page_business_via_app = { error: e.message }; }
 
   return json(log);
 }
