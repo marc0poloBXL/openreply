@@ -179,19 +179,33 @@ export async function GET(req: Request) {
     }
   }
 
-  // 8. Try to subscribe via user token approach — get a page token and use it
+  // 8. Try to subscribe via page-id/subscribed_apps (correct approach per Meta docs)
   if (pageToken) {
     try {
       const r = await fetchGraph(
-        `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps`,
+        `https://graph.facebook.com/v25.0/${PAGE_ID}/subscribed_apps`,
         {
           access_token: pageToken,
           subscribed_fields: "comments,messages",
         }
       );
-      results.subscribeViaPageToken = r.body;
+      results.subscribeViaPageId = r.body;
     } catch (e: any) {
-      errors.push(`sub_page: ${e.message}`);
+      errors.push(`sub_page_id: ${e.message}`);
+    }
+
+    // Also try page-id/subscribed_apps with just "comments" field
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v25.0/${PAGE_ID}/subscribed_apps`,
+        {
+          access_token: pageToken,
+          subscribed_fields: "comments",
+        }
+      );
+      results.subscribeViaPageIdCommentsOnly = r.body;
+    } catch (e: any) {
+      errors.push(`sub_page_id_comm: ${e.message}`);
     }
   }
 
