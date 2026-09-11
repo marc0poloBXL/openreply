@@ -72,14 +72,15 @@ export async function GET() {
     });
   }
 
-  // === 7. Try BM alternative endpoints with page token ===
+  // === 7. Try BM endpoints with page token ===
   if (pageToken) {
-    // client_pages — pages the BM owns
     for (const bm of ["2052016095704629", "5180791675279566", "9824014651061253"]) {
-      try {
-        const r = await fetch(`https://graph.facebook.com/v26.0/${bm}/client_pages?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`);
-        log[`bm_${bm}_client_pages`] = await r.json();
-      } catch (e: any) { log[`bm_${bm}_client_pages`] = { error: e.message }; }
+      for (const edge of ["owned_pages", "client_pages"]) {
+        try {
+          const r = await fetch(`https://graph.facebook.com/v26.0/${bm}/${edge}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`);
+          log[`bm_${bm}_${edge}`] = await r.json();
+        } catch (e: any) { log[`bm_${bm}_${edge}`] = { error: e.message }; }
+      }
     }
   }
 
