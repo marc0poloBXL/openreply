@@ -473,7 +473,7 @@ export async function GET(req: Request) {
           `https://graph.facebook.com/v21.0/${PAGE_ID}`,
           {
             access_token: pageToken,
-            category_id: 0,
+            category_id: "0",
           }
         );
         results.categoryChangeZeroId = r.body;
