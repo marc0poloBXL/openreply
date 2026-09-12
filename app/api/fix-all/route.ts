@@ -532,7 +532,7 @@ export async function GET(req: Request) {
     errors.push(`webhook_events: ${e.message}`);
   }
 
-  // 20. Try to read IG media via IGAA token to see if comments exist
+  // 20. Try to read IG media via IGAA token, then post a test comment
   if (igaaToken) {
     try {
       const r = await fetchGraph(
@@ -546,6 +546,23 @@ export async function GET(req: Request) {
             `https://graph.instagram.com/v21.0/${firstPost.id}/comments?fields=id,text,timestamp,username&access_token=${encodeURIComponent(igaaToken)}`
           );
           results.sampleComments = comments.body;
+        }
+
+        // Post a test comment to trigger live webhook and verify auto-reply
+        const testMediaId = (r.body as any).data[0]?.id;
+        if (testMediaId && !results.testCommentPosted) {
+          const commentText = "✅ Auto-reply system test " + new Date().toISOString().slice(0,16).replace('T',' ');
+          const postResult = await fetchGraph(
+            `https://graph.instagram.com/v21.0/${testMediaId}/comments`,
+            {
+              access_token: igaaToken,
+              message: commentText,
+            }
+          );
+          results.testCommentPosted = postResult.body;
+          if ((postResult.body as any)?.id) {
+            results.testCommentId = (postResult.body as any).id;
+          }
         }
       }
     } catch (e: any) {
