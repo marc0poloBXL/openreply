@@ -550,8 +550,8 @@ export async function GET(req: Request) {
 
         // Post a test comment to trigger live webhook and verify auto-reply
         const testMediaId = (r.body as any).data[0]?.id;
-        if (testMediaId && !results.testCommentPosted) {
-          const commentText = "✅ Auto-reply system test " + new Date().toISOString().slice(0,16).replace('T',' ');
+        if (testMediaId) {
+          const commentText = "Zut";
           const postResult = await fetchGraph(
             `https://graph.instagram.com/v21.0/${testMediaId}/comments`,
             {
