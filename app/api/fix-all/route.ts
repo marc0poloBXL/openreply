@@ -505,6 +505,42 @@ export async function GET(req: Request) {
       select: { id: true, object: true, status: true, createdAt: true },
     });
     results.recentWebhookEvents = events;
+
+    // Get full payload of most recent event to check for comment test data
+    const rawEvent = await prisma.webhookEvent.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { id: true, object: true, payload: true, createdAt: true },
+    });
+    if (rawEvent) {
+      const p = rawEvent.payload as Record<string, unknown>;
+      results.latestWebhookPayload = {
+        id: rawEvent.id,
+        createdAt: rawEvent.createdAt,
+        object: rawEvent.object,
+        hasEntry: Array.isArray(p?.entry),
+        entryCount: Array.isArray(p?.entry) ? (p.entry as unknown[]).length : 0,
+        changes: Array.isArray(p?.entry)
+          ? (p.entry as unknown[]).map((e: any) => ({
+              id: e.id,
+              time: e.time,
+              hasChanges: Array.isArray(e.changes),
+              changeCount: Array.isArray(e.changes) ? e.changes.length : 0,
+              changes: Array.isArray(e.changes)
+                ? e.changes.map((c: any) => ({
+                    field: c.field,
+                    valueType: typeof c.value,
+                    valuePreview: typeof c.value === 'string' ? c.value.substring(0, 100) : JSON.stringify(c.value).substring(0, 200),
+                  }))
+                : null,
+              hasMessaging: Array.isArray(e.messaging),
+              messagingCount: Array.isArray(e.messaging) ? e.messaging.length : 0,
+            }))
+          : null,
+      };
+    }
+  } catch (e: any) {
+    errors.push(`webhook_events: ${e.message}`);
+  }
     const commentCount = await prisma.webhookEvent.count({
       where: { object: { contains: "comment" } },
     });
