@@ -548,22 +548,9 @@ export async function GET(req: Request) {
           results.sampleComments = comments.body;
         }
 
-        // Post a test comment to trigger live webhook and verify auto-reply
+        // Record which post we'd comment on for reference
         const testMediaId = (r.body as any).data[0]?.id;
-        if (testMediaId) {
-          const commentText = "Zut";
-          const postResult = await fetchGraph(
-            `https://graph.instagram.com/v21.0/${testMediaId}/comments`,
-            {
-              access_token: igaaToken,
-              message: commentText,
-            }
-          );
-          results.testCommentPosted = postResult.body;
-          if ((postResult.body as any)?.id) {
-            results.testCommentId = (postResult.body as any).id;
-          }
-        }
+        results.firstPostId = testMediaId;
       }
     } catch (e: any) {
       errors.push(`media_check: ${e.message}`);
