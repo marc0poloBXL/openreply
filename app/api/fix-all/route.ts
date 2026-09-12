@@ -402,42 +402,98 @@ export async function GET(req: Request) {
 
   // 18. Try to add FB App to Business Portfolio via API (using user token with business_management)
   const businessToken = url.searchParams.get("business_token") || url.searchParams.get("user_token") || newUserToken;
-  if (businessToken) {
+  // 18. FIX: Try to change page category from "Personal blog" to business-compatible
+  if (pageToken) {
+    // First, check current page categories
     try {
       const r = await fetchGraph(
-        `https://graph.facebook.com/v21.0/${BM_ID}/apps`,
-        {
-          app_id: FB_APP_ID,
-          access_token: businessToken,
-        }
+        `https://graph.facebook.com/v21.0/${PAGE_ID}/categories?access_token=${encodeURIComponent(pageToken)}`
       );
-      results.addAppToBusiness = r.body;
-
-      // If success, try subscribing with FB App token now
-      const addOk = !(r.body as any).error;
-      results.addAppSuccess = addOk;
-
-      // After linking, try subscribing IG Biz ID to FB App
-      const subR = await fetchGraph(
-        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}/subscribed_apps`,
-        {
-          access_token: fbAppToken,
-          subscribed_fields: "comments,messages",
-        }
-      );
-      results.subscribeAfterBizLink = subR.body;
-
-      // Also try with IG_ID
-      const subR2 = await fetchGraph(
-        `https://graph.facebook.com/v21.0/${IG_ID}/subscribed_apps`,
-        {
-          access_token: fbAppToken,
-          subscribed_fields: "comments,messages",
-        }
-      );
-      results.subscribeAfterBizLinkIGID = subR2.body;
+      results.pageCategories = r.body;
     } catch (e: any) {
-      errors.push(`biz_link: ${e.message}`);
+      errors.push(`get_cats: ${e.message}`);
+    }
+
+    // Try changing category to Website (common business category)
+    // Various category names to try
+    const categoriesToTry = [
+      "Website",
+      "Brand",
+      "Product/Service",
+      "Shopping & Retail",
+      "Local Business",
+      "App Page",
+    ];
+    results.categoryChangeAttempts = [];
+
+    for (const cat of categoriesToTry) {
+      try {
+        const r = await fetchGraph(
+          `https://graph.facebook.com/v21.0/${PAGE_ID}`,
+          {
+            access_token: pageToken,
+            category: cat,
+          }
+        );
+        results.categoryChangeAttempts.push({ category: cat, result: r.body });
+        // If successful, try subscribing comments now
+        if (!(r.body as any).error) {
+          results.categoryChangedTo = cat;
+          // Try page-id/subscribed_apps
+          const sub = await fetchGraph(
+            `https://graph.facebook.com/v21.0/${PAGE_ID}/subscribed_apps`,
+            { access_token: pageToken, subscribed_fields: "comments,messages" }
+          );
+          results.subscribeAfterCategoryChange = sub.body;
+
+          // Try IG biz ID subscription
+          const sub2 = await fetchGraph(
+            `https://graph.facebook.com/v21.0/${IG_BIZ_ID}/subscribed_apps`,
+            { access_token: fbAppToken, subscribed_fields: "comments,messages" }
+          );
+          results.subscribeIGAfterCategoryChange = sub2.body;
+
+          // Check page instagram_business_account
+          const pg = await fetchGraph(
+            `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+          );
+          results.pageAfterCategoryChange = pg.body;
+
+          break; // Stop trying more categories
+        }
+      } catch (e: any) {
+        errors.push(`cat_change_${cat}: ${e.message}`);
+      }
+    }
+
+    // If all categories failed, try using category_id = 0 (generic business)
+    if (!results.categoryChangedTo) {
+      try {
+        const r = await fetchGraph(
+          `https://graph.facebook.com/v21.0/${PAGE_ID}`,
+          {
+            access_token: pageToken,
+            category_id: 0,
+          }
+        );
+        results.categoryChangeZeroId = r.body;
+      } catch (e: any) {
+        errors.push(`cat_zero: ${e.message}`);
+      }
+    }
+
+    // Final attempt: try subscribing via IGAA token on graph.instagram.com
+    // This already works - but check the IG App webhook status
+    if (igaaToken) {
+      try {
+        // Check if there's any subscription on the IG account (it exists)
+        const subs = await fetchGraph(
+          `https://graph.instagram.com/v21.0/${IG_ID}/subscribed_apps?access_token=${encodeURIComponent(igaaToken)}`
+        );
+        results.igSubscriptions = subs.body;
+      } catch (e: any) {
+        errors.push(`ig_subs_final: ${e.message}`);
+      }
     }
   }
 
