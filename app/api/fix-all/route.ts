@@ -435,7 +435,7 @@ export async function GET(req: Request) {
             category: cat,
           }
         );
-        results.categoryChangeAttempts.push({ category: cat, result: r.body });
+        (results.categoryChangeAttempts as Array<{category: string; result: unknown}>).push({ category: cat, result: r.body });
         // If successful, try subscribing comments now
         if (!(r.body as any).error) {
           results.categoryChangedTo = cat;
