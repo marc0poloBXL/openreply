@@ -497,6 +497,45 @@ export async function GET(req: Request) {
     }
   }
 
+  // 19. Check WebhookEvent table for comment events
+  try {
+    const events = await prisma.webhookEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { id: true, object: true, status: true, createdAt: true },
+    });
+    results.recentWebhookEvents = events;
+    const commentCount = await prisma.webhookEvent.count({
+      where: { object: { contains: "comment" } },
+    });
+    results.totalCommentEvents = commentCount;
+    const totalEvents = await prisma.webhookEvent.count();
+    results.totalWebhookEvents = totalEvents;
+  } catch (e: any) {
+    errors.push(`webhook_events: ${e.message}`);
+  }
+
+  // 20. Try to read IG media via IGAA token to see if comments exist
+  if (igaaToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.instagram.com/v21.0/${IG_ID}/media?fields=id,caption,media_type,timestamp,comments_count&limit=5&access_token=${encodeURIComponent(igaaToken)}`
+      );
+      results.recentMedia = r.body;
+      if ((r.body as any)?.data) {
+        const firstPost = (r.body as any).data[0];
+        if (firstPost?.id && firstPost.comments_count > 0) {
+          const comments = await fetchGraph(
+            `https://graph.instagram.com/v21.0/${firstPost.id}/comments?fields=id,text,timestamp,username&access_token=${encodeURIComponent(igaaToken)}`
+          );
+          results.sampleComments = comments.body;
+        }
+      }
+    } catch (e: any) {
+      errors.push(`media_check: ${e.message}`);
+    }
+  }
+
   results.errors = errors;
 
   return NextResponse.json(results);
