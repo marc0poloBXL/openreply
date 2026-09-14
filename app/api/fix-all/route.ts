@@ -564,9 +564,20 @@ export async function GET(req: Request) {
           results.sampleComments = comments.body;
         }
 
-        // Record which post we'd comment on for reference
+        // Post ONE test comment ONLY if ?post_test=true query param is present
         const testMediaId = (r.body as any).data[0]?.id;
         results.firstPostId = testMediaId;
+        if (testMediaId && url.searchParams.get("post_test") === "true") {
+          const commentText = "test";
+          const postResult = await fetchGraph(
+            `https://graph.instagram.com/v21.0/${testMediaId}/comments`,
+            {
+              access_token: igaaToken,
+              message: commentText,
+            }
+          );
+          results.testCommentResult = postResult.body;
+        }
       }
     } catch (e: any) {
       errors.push(`media_check: ${e.message}`);
