@@ -42,27 +42,34 @@ export async function GET(req: Request) {
     return new Response(htmlPage("Get Facebook Page Token",
       `<h2>Get a Page Token for @stoiczodiac</h2>
 
-       <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:16px 0;font-size:13px;">
-         <strong>⚠️ Facebook Login can't grant <code>pages_manage_metadata</code> for this app.</strong><br>
-         The <strong>Graph API Explorer</strong> (developer tool) is the only way — one page, fixed layout:
+       <div style="background:#e8f5e9;border:2px solid #16a34a;border-radius:12px;padding:20px;margin:16px 0;font-size:15px;text-align:center;">
+         <strong style="font-size:18px;">🚀 One-Click Fix</strong><br>
+         Click the button below → approve the Facebook popup → everything else happens automatically.
        </div>
 
-       <ol style="font-size:15px;line-height:1.8;">
-         <li><strong>Open</strong> → <a href="${explorerUrl}" target="_blank" style="color:#1877F2;font-weight:600;">Graph API Explorer</a>
-           <span style="color:#666;font-size:13px;">(opens pre-configured for our app)</span></li>
-         <li><strong>Dropdown</strong> at top: confirm it says <strong>"User Token"</strong></li>
-         <li>Click <strong>"Add permissions"</strong> → search for → add <code style="background:#e8e8e8;padding:2px 6px;border-radius:4px;">pages_manage_metadata</code></li>
-         <li>Click <strong>"Generate Access Token"</strong> → approve the popup</li>
-         <li><strong>Copy</strong> the <code>EAA...</code> token → paste below</li>
-       </ol>
+       <div style="text-align:center;margin:20px 0;">
+         <a href="https://www.facebook.com/v26.0/dialog/oauth?client_id=${APP_ID}&redirect_uri=${BASE}/api/auth/token-helper&scope=pages_read_engagement,pages_manage_metadata,pages_show_list,business_management&response_type=code"
+            class="btn" style="display:inline-block;background:#1877F2;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:17px;font-weight:600;">
+           🔗 Login with Facebook
+         </a>
+         <p style="color:#666;font-size:12px;margin-top:6px;">Opens Facebook dialog → click Continue → done</p>
+       </div>
 
-       <form method="get" action="" style="text-align:center;margin-top:20px;">
+       <hr style="margin:24px 0;">
+
+       <p style="text-align:center;color:#888;font-size:14px;">
+         <strong>Alternative:</strong> Use the
+         <a href="https://developers.facebook.com/tools/explorer/${APP_ID}/" target="_blank" style="color:#1877F2;">Graph API Explorer</a>
+         and paste your token below:
+       </p>
+
+       <form method="get" action="" style="text-align:center;margin-top:12px;">
          <input type="text" name="token" placeholder="Paste EAA... token here"
                 style="width:90%;padding:12px;border:2px solid #1877F2;border-radius:8px;font-family:monospace;font-size:14px;box-sizing:border-box;">
-         <button type="submit" class="btn" style="display:inline-block;margin-top:10px;font-size:16px;padding:12px 28px;">🔍 Get Page Token</button>
+         <button type="submit" class="btn" style="display:inline-block;margin-top:10px;font-size:16px;padding:12px 28px;">🔍 Submit Token</button>
        </form>
        <p style="color:#666;font-size:13px;text-align:center;">
-         ⚡ The system will exchange the token for 60 days, store it,<br>
+         ⚡ Either method will exchange the token for 60 days, store it,<br>
          link the IG account to the page, and subscribe webhooks — automatically.
        </p>`
     ), { headers: { "content-type": "text/html" } });
