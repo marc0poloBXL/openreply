@@ -24,7 +24,7 @@ export async function GET(req: Request) {
         <div style="font-size:60px;margin-bottom:16px;">✅</div>
         <h2>Comment Auto-Reply is FIXED!</h2>
         <p>New page created with category: <strong>${page || "Brand"}</strong></p>
-        <p>IG link: ${link === "ok" ? "✅ Success" : "⚠️ " + (link || "needs check")}</p>
+        <p>IG link: ${link === "true" ? "✅ Success" : "⚠️ Needs check"}</p>
         <p>Webhook subscribed: ${subscribed === "true" ? "✅ Yes" : "⚠️ Not yet"}</p>
         <hr style="margin:20px 0;">
         <p><strong>What happens next:</strong></p>
@@ -35,6 +35,22 @@ export async function GET(req: Request) {
         <a href="/api/fix-all" style="color:#1877F2;">Check full status →</a>
       </p>
     `, "🎉 Fixed!");
+  }
+
+  if (result === "linked_no_api") {
+    const errs = url.searchParams.get("errors") || "";
+    return htmlResponse(`
+      <div class="card ${link === "true" ? "success" : "error"}">
+        <div style="font-size:60px;margin-bottom:16px;">${link === "true" ? "✅" : "⚠️"}</div>
+        <h2>Partial Fix — Token Stored</h2>
+        <p>Page token stored with category: <strong>${page || "unknown"}</strong></p>
+        <p>IG link: ${link === "true" ? "✅ Linked" : "❌ Failed"}</p>
+        <p>Webhook subscribed: ${subscribed === "true" ? "✅ Yes" : "⚠️ Not yet"}</p>
+        ${errs ? `<hr style="margin:20px 0;"><p style="font-size:13px;color:#c00;"><strong>Details:</strong><br>${errs.replace(/;;/g, "<br>")}</p>` : ""}
+        <hr style="margin:20px 0;">
+        <p><a href="/api/fix-all" style="color:#1877F2;">Check full status →</a></p>
+      </div>
+    `, "⚠️ Partial Fix");
   }
 
   if (result === "linked") {
@@ -60,10 +76,12 @@ export async function GET(req: Request) {
   }
 
   if (error) {
+    const details = url.searchParams.get("details") || "";
     return htmlResponse(`
       <div class="card error">
         <h2>Error</h2>
         <p>${error.replace(/</g, "&lt;")}</p>
+        ${details ? `<hr style="margin:16px 0;"><p style="font-size:13px;color:#666;word-break:break-all;">${details.replace(/</g, "&lt;").replace(/;;/g, "<br>")}</p>` : ""}
         <p><a href="?start=1" class="btn">Try Again</a></p>
       </div>
     `, "❌ Error");
