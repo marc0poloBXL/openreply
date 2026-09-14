@@ -663,6 +663,43 @@ export async function GET(req: Request) {
     }
   }
 
+  // NEW: Check connected_page on IG Business Account
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}?fields=id,username,connected_page{id,name,category}&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.igBizConnectedPage = r.body;
+    } catch (e: any) {
+      errors.push(`ig_biz_connected: ${e.message}`);
+    }
+    // NEW: Check assigned_pages on IG BIZ
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}/assigned_pages?fields=id,name,category&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.igBizAssignedPages = r.body;
+    } catch (e: any) {
+      errors.push(`ig_biz_assigned: ${e.message}`);
+    }
+  }
+
+  // NEW: Try adding IG account to Business Manager
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${BM_ID}/owned_instagram_accounts`,
+        {
+          access_token: pageToken,
+          instagram_account_id: IG_BIZ_ID,
+        }
+      );
+      results.bmAddOwnedIG = r.body;
+    } catch (e: any) {
+      errors.push(`bm_owned_ig: ${e.message}`);
+    }
+  }
+
   results.errors = errors;
 
   return NextResponse.json(results);
