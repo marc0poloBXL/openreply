@@ -12,7 +12,7 @@ import {
 import { canManageWorkspace } from "@/lib/workspace-access";
 
 const IG_ID = process.env.INSTAGRAM_ACCOUNT_ID || "17841438935909153";
-const IG_ACCOUNT_DB_ID = process.env.IG_DB_RECORD_ID || "cmtocgan5000004kzet71p0ka";
+const IG_USERNAME = "stoiczodiac";
 
 const CATEGORY_NAMES = ["Brand", "Website", "App Page", "Entertainment", "Media/News Company"];
 
@@ -266,7 +266,25 @@ export async function GET(request: NextRequest) {
         webhookSubscribed: subscribed,
       };
       if (pageId) updateData.facebookPageId = pageId;
-      await prisma.instagramAccount.update({ where: { id: IG_ACCOUNT_DB_ID }, data: updateData });
+
+      // Find the account record by IG ID instead of hardcoded DB id
+      let dbRecord = await prisma.instagramAccount.findFirst({
+        where: { instagramId: IG_ID },
+        orderBy: { connectedAt: "desc" },
+      });
+      if (!dbRecord) {
+        // Try looking up by username
+        dbRecord = await prisma.instagramAccount.findFirst({
+          where: { username: IG_USERNAME },
+          orderBy: { connectedAt: "desc" },
+        });
+      }
+      if (dbRecord) {
+        await prisma.instagramAccount.update({ where: { id: dbRecord.id }, data: updateData });
+        log.push("token stored to record: " + dbRecord.id);
+      } else {
+        log.push("no existing InstagramAccount record found — cannot store token");
+      }
       log.push("token stored");
 
       const icon = linked ? "✅" : "⚠️";
