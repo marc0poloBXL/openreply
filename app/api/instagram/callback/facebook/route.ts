@@ -418,4 +418,4 @@ export async function GET(request: NextRequest) {
       `${baseUrl}/api/fb-fix?error=${encodeURIComponent(message.substring(0, 200))}`
     );
   }
-}
+}// force-redeploy Mon, Sep 14, 2026  3:48:36 PM
