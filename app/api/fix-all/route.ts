@@ -310,6 +310,22 @@ export async function GET(req: Request) {
     }
   }
 
+  // 12b. Subscribe IG to FB App via graph.facebook.com using page token (NOT yet tried)
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps`,
+        {
+          access_token: pageToken,
+          subscribed_fields: "comments,messages",
+        }
+      );
+      results.subscribeIGviaPageToken = r.body;
+    } catch (e: any) {
+      errors.push(`sub_ig_page: ${e.message}`);
+    }
+  }
+
   // 13. Subscribe using Business Account ID + FB app token (this is the correct ID for graph.facebook.com)
   try {
     const r = await fetchGraph(
