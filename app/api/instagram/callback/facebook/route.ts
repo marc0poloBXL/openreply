@@ -168,6 +168,7 @@ async function tryCreatePage(token: string, log: string[]): Promise<{ id: string
 
 /**
  * Facebook Login callback — supports both session-based and simple-fix flows.
+ * v2 — uses upsert for DB, findFirst fallback, runtime business discovery
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -260,32 +261,44 @@ export async function GET(request: NextRequest) {
       log.push("webhook subscribed: " + subscribed);
 
       const encrypted = encryptToken(pageToken);
+      const tokenExp = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000);
       const updateData: any = {
         pageToken: encrypted,
-        tokenExpiresAt: new Date(Date.now() + 55 * 24 * 60 * 60 * 1000),
+        tokenExpiresAt: tokenExp,
         webhookSubscribed: subscribed,
       };
       if (pageId) updateData.facebookPageId = pageId;
 
-      // Find the account record by IG ID instead of hardcoded DB id
-      let dbRecord = await prisma.instagramAccount.findFirst({
-        where: { instagramId: IG_ID },
-        orderBy: { connectedAt: "desc" },
-      });
-      if (!dbRecord) {
-        // Try looking up by username
-        dbRecord = await prisma.instagramAccount.findFirst({
-          where: { username: IG_USERNAME },
-          orderBy: { connectedAt: "desc" },
+      // Use upsert so it creates a record if none exists
+      try {
+        await prisma.instagramAccount.upsert({
+          where: { instagramId: IG_ID },
+          create: {
+            instagramId: IG_ID,
+            username: IG_USERNAME,
+            accessToken: "",
+            workspaceId: "default",
+            pageToken: encrypted,
+            tokenExpiresAt: tokenExp,
+            webhookSubscribed: subscribed,
+            ...(pageId ? { facebookPageId: pageId } : {}),
+          },
+          update: updateData,
         });
+        log.push("token saved via upsert");
+      } catch (dbErr: any) {
+        log.push("upsert failed: " + (dbErr.message || "unknown").substring(0, 150));
+        // Last resort: try to find any record by any criteria
+        try {
+          const anyRecord = await prisma.instagramAccount.findFirst({ orderBy: { connectedAt: "desc" } });
+          if (anyRecord) {
+            await prisma.instagramAccount.update({ where: { id: anyRecord.id }, data: updateData });
+            log.push("token saved via fallback (id=" + anyRecord.id + ")");
+          }
+        } catch (fallbackErr: any) {
+          log.push("fallback also failed: " + (fallbackErr.message || "").substring(0, 100));
+        }
       }
-      if (dbRecord) {
-        await prisma.instagramAccount.update({ where: { id: dbRecord.id }, data: updateData });
-        log.push("token stored to record: " + dbRecord.id);
-      } else {
-        log.push("no existing InstagramAccount record found — cannot store token");
-      }
-      log.push("token stored");
 
       const icon = linked ? "✅" : "⚠️";
       const title = linked ? "Comment Auto-Reply is FIXED!" : "Token Stored (IG link needs manual check)";
