@@ -556,15 +556,51 @@ export async function GET(req: Request) {
     }
   }
 
-  // 21. NEW: Try graph.facebook.com with page token (now has pages_read_engagement from token-helper)
+  // 21. NEW: Try subscribe IG to FB App with the updated page token (now has pages_read_engagement)
   if (pageToken) {
     try {
       const r = await fetchGraph(
-        `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+        `https://graph.facebook.com/v21.0/${IG_ID}/subscribed_apps`,
+        {
+          access_token: pageToken,
+          subscribed_fields: "comments,messages",
+        }
+      );
+      results.subscribeIGviaNewPageToken = r.body;
+    } catch (e: any) {
+      errors.push(`sub_new_page: ${e.message}`);
+    }
+  }
+
+  // 22. Try graph.facebook.com with page token (now has pages_read_engagement from token-helper)
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,link,username,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
       );
       results.pageWithIgbiz = r.body;
     } catch (e: any) {
       errors.push(`page_igbiz: ${e.message}`);
+    }
+
+    // Try reading the page's own posts (which might have links to IG comments)
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${PAGE_ID}/feed?fields=id,message,created_time&limit=5&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.pageFeed = r.body;
+    } catch (e: any) {
+      errors.push(`page_feed: ${e.message}`);
+    }
+
+    // Try reading IG biz account details (might work now with new token)
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}?fields=id,username,media_count&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.igBizWithPageToken = r.body;
+    } catch (e: any) {
+      errors.push(`ig_biz: ${e.message}`);
     }
 
     // Try reading IG biz account media via the IG BIZ ID on graph.facebook.com
