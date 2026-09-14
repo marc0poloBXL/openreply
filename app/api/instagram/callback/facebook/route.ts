@@ -28,11 +28,11 @@ export async function GET(request: NextRequest) {
   const baseUrl = getBaseUrl();
 
   if (errorParam) {
-    return NextResponse.redirect(`${baseUrl}/api/auth/fb-fix?error=denied`);
+    return NextResponse.redirect(`${baseUrl}/api/fb-fix?error=denied`);
   }
 
   if (!code) {
-    return NextResponse.redirect(`${baseUrl}/api/auth/fb-fix?error=invalid`);
+    return NextResponse.redirect(`${baseUrl}/api/fb-fix?error=invalid`);
   }
 
   // Determine if this is the simple-fix flow
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         });
 
         return NextResponse.redirect(
-          `${baseUrl}/api/auth/fb-fix?result=linked&link=${linkData.success ? "ok" : "fail"}`
+          `${baseUrl}/api/fb-fix?result=linked&link=${linkData.success ? "ok" : "fail"}`
         );
       }
 
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
 
       if (!createdPage) {
         return NextResponse.redirect(
-          `${baseUrl}/api/auth/fb-fix?error=could_not_create_page`
+          `${baseUrl}/api/fb-fix?error=could_not_create_page`
         );
       }
 
@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
       });
 
       return NextResponse.redirect(
-        `${baseUrl}/api/auth/fb-fix?result=done&page=${createdPage.name}&link=${typeof linkResult === "string" ? linkResult.substring(0, 100) : "tried"}&subscribed=${subscribed}`
+        `${baseUrl}/api/fb-fix?result=done&page=${createdPage.name}&link=${typeof linkResult === "string" ? linkResult.substring(0, 100) : "tried"}&subscribed=${subscribed}`
       );
 
     } else {
@@ -308,7 +308,7 @@ export async function GET(request: NextRequest) {
     console.error("[FacebookCallback] Error:", err);
 
     return NextResponse.redirect(
-      `${baseUrl}/api/auth/fb-fix?error=${encodeURIComponent(message.substring(0, 200))}`
+      `${baseUrl}/api/fb-fix?error=${encodeURIComponent(message.substring(0, 200))}`
     );
   }
 }
