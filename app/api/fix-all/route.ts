@@ -630,6 +630,39 @@ export async function GET(req: Request) {
     }
   }
 
+  // 23. Try to identify token type and check if it's a user token
+  if (pageToken) {
+    try {
+      const me = await fetchGraph(
+        `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.meResult = me.body;
+
+      // If /me works, this is a user token - check accounts
+      const meData = me.body as any;
+      if (meData?.id) {
+        // Check which pages this user manages
+        const accounts = await fetchGraph(
+          `https://graph.facebook.com/v21.0/${meData.id}/accounts?fields=id,name,category&access_token=${encodeURIComponent(pageToken)}`
+        );
+        results.userAccounts = accounts.body;
+
+        // Log the token type
+        const tokenInfo = await fetchGraph(
+          `https://graph.facebook.com/v21.0/debug_token?input_token=${encodeURIComponent(pageToken)}&access_token=${encodeURIComponent(`${FB_APP_ID}|${FB_APP_SECRET}`)}`
+        );
+        const debug = (tokenInfo.body as any)?.data;
+        if (debug) {
+          results.tokenType = debug.type;
+          results.tokenAppId = debug.app_id;
+          results.tokenUserId = debug.user_id;
+        }
+      }
+    } catch (e: any) {
+      errors.push(`token_type: ${e.message}`);
+    }
+  }
+
   results.errors = errors;
 
   return NextResponse.json(results);
