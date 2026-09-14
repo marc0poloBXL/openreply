@@ -267,7 +267,6 @@ export async function GET(request: NextRequest) {
         tokenExpiresAt: tokenExp,
         webhookSubscribed: subscribed,
       };
-      if (pageId) updateData.facebookPageId = pageId;
 
       // Look up a real workspace for the foreign key
       try {
@@ -284,7 +283,6 @@ export async function GET(request: NextRequest) {
             pageToken: encrypted,
             tokenExpiresAt: tokenExp,
             webhookSubscribed: subscribed,
-            ...(pageId ? { facebookPageId: pageId } : {}),
           },
           update: updateData,
         });
