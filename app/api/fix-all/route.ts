@@ -556,6 +556,28 @@ export async function GET(req: Request) {
     }
   }
 
+  // 21. NEW: Try graph.facebook.com with page token (now has pages_read_engagement from token-helper)
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.pageWithIgbiz = r.body;
+    } catch (e: any) {
+      errors.push(`page_igbiz: ${e.message}`);
+    }
+
+    // Try reading IG biz account media via the IG BIZ ID on graph.facebook.com
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/${IG_BIZ_ID}/media?fields=id,caption,media_type,timestamp,comments_count&limit=5&access_token=${encodeURIComponent(pageToken)}`
+      );
+      results.fbMediaAccess = r.body;
+    } catch (e: any) {
+      errors.push(`fb_media: ${e.message}`);
+    }
+  }
+
   results.errors = errors;
 
   return NextResponse.json(results);
