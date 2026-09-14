@@ -310,22 +310,6 @@ export async function GET(req: Request) {
     }
   }
 
-  // 12b. Subscribe IG to FB App via graph.facebook.com using page token (NOT yet tried)
-  if (pageToken) {
-    try {
-      const r = await fetchGraph(
-        `https://graph.facebook.com/v26.0/${IG_ID}/subscribed_apps`,
-        {
-          access_token: pageToken,
-          subscribed_fields: "comments,messages",
-        }
-      );
-      results.subscribeIGviaPageToken = r.body;
-    } catch (e: any) {
-      errors.push(`sub_ig_page: ${e.message}`);
-    }
-  }
-
   // 13. Subscribe using Business Account ID + FB app token (this is the correct ID for graph.facebook.com)
   try {
     const r = await fetchGraph(
@@ -564,20 +548,8 @@ export async function GET(req: Request) {
           results.sampleComments = comments.body;
         }
 
-        // Post ONE test comment ONLY if ?post_test=true query param is present
         const testMediaId = (r.body as any).data[0]?.id;
         results.firstPostId = testMediaId;
-        if (testMediaId && url.searchParams.get("post_test") === "true") {
-          const commentText = "test";
-          const postResult = await fetchGraph(
-            `https://graph.instagram.com/v21.0/${testMediaId}/comments`,
-            {
-              access_token: igaaToken,
-              message: commentText,
-            }
-          );
-          results.testCommentResult = postResult.body;
-        }
       }
     } catch (e: any) {
       errors.push(`media_check: ${e.message}`);
