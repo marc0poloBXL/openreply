@@ -92,6 +92,18 @@ export async function GET(req: Request) {
     }
   }
 
+  // Check token scopes
+  if (pageToken) {
+    try {
+      const r = await fetchGraph(
+        `https://graph.facebook.com/v21.0/debug_token?input_token=${encodeURIComponent(pageToken)}&access_token=${encodeURIComponent(`${FB_APP_ID}|${FB_APP_SECRET}`)}`
+      );
+      results.pageTokenScopes = (r.body as any)?.data?.scopes || (r.body as any)?.error?.message;
+    } catch (e: any) {
+      errors.push(`debug_token: ${e.message}`);
+    }
+  }
+
   // 2. Check IG account type via graph.instagram.com (IGAA token)
   if (igaaToken) {
     try {
@@ -576,9 +588,13 @@ export async function GET(req: Request) {
   if (pageToken) {
     try {
       const r = await fetchGraph(
-        `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,link,username,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+        `https://graph.facebook.com/v21.0/${PAGE_ID}?fields=id,name,link,username,category,category_list,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
       );
       results.pageWithIgbiz = r.body;
+      // Also try changing category from this result's category_list
+      if ((r.body as any)?.category) {
+        results.currentCategory = (r.body as any).category;
+      }
     } catch (e: any) {
       errors.push(`page_igbiz: ${e.message}`);
     }
