@@ -90,56 +90,24 @@ export async function GET(request: NextRequest) {
   const countAfter = checkInfo.comments_count ?? 0;
   line(`Comments after test post: ${countAfter}`);
 
-  // 6. Bypass lookback: directly run the reply logic against this media
+  // 6. Run the real pollAndReplyByCount with forceMediaId (bypasses lookback)
   line("");
-  line("--- Direct reply test (bypassing lookback) ---");
+  line("--- Running real pollAndReplyByCount with forceMediaId ---");
 
-  // Check if we'd reply: is it in the replied set?
-  const redis = getRedisConnection();
-  const alreadyReplied = await redis.sismember(`cmt-replied:${IG_ID}`, mediaId);
-  line(`Already in replied set: ${alreadyReplied ? "YES — would skip" : "NO — would reply"}`);
-
-  if (!alreadyReplied) {
-    // Get the reply message (same logic as pollAndReplyByCount)
-    const automation = await prisma.automation.findFirst({
-      where: { isActive: true, instagramAccountId: account.id },
-      select: { publicReplyMessage: true, publicReplyMessages: true },
+  try {
+    await pollAndReplyByCount({
+      forceMediaId: mediaId,
+      forceLookbackMs: 999_999_999, // far future: ensures freshness gate passes
     });
-    const pool = automation?.publicReplyMessages?.length
-      ? automation.publicReplyMessages
-      : automation?.publicReplyMessage
-        ? [automation.publicReplyMessage]
-        : [];
-    const replyMessage =
-      pool.length > 0
-        ? pool[Math.floor(Math.random() * pool.length)]
-        : "Thanks for engaging! 🏛 Which Stoic philosopher resonates with you?";
-
-    line(`Would reply with: "${(replyMessage || "").substring(0, 60)}..."`);
-
-    // Actually post the reply
-    const replyResp = await fetch(
-      `https://graph.instagram.com/v21.0/${mediaId}/comments`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          access_token: igaaToken,
-          message: replyMessage,
-        }).toString(),
-      }
-    );
-    const replyData: any = await replyResp.json();
-
-    if (replyData.id) {
-      // Mark as replied in Redis
-      await redis.sadd(`cmt-replied:${IG_ID}`, mediaId);
-      line(`✅ Auto-reply posted: ${replyData.id}`);
-      line("✅ Marked as replied in Redis");
-    } else {
-      line(`❌ Auto-reply failed: ${replyData.error?.message ?? "?"}`);
-    }
+    line("pollAndReplyByCount completed");
+  } catch (e: any) {
+    line(`pollAndReplyByCount threw: ${e.message}`);
   }
+
+  // Check if poller marked it as replied
+  const redis = getRedisConnection();
+  const afterPoller = await redis.sismember(`cmt-replied:${IG_ID}`, mediaId);
+  line(`Media in replied set after poller: ${afterPoller ? "✅ YES (poller replied)" : "❌ NO (poller skipped it)"}`);
 
   // 7. Final verification
   line("");
