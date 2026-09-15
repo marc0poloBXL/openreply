@@ -147,5 +147,22 @@ export async function GET(request: NextRequest) {
   const finalReplied = await redis.sismember(`cmt-replied:${IG_ID}`, mediaId);
   line(`Media in replied set: ${finalReplied ? "✅ YES" : "❌ NO"} (will not reply again)`);
 
+  // 8. Try to get the permalink
+  line("");
+  line("--- Fetching permalink ---");
+  try {
+    const permResp = await fetch(
+      `https://graph.instagram.com/v21.0/${mediaId}?fields=id,permalink&access_token=${igaaToken}`
+    );
+    const permData: any = await permResp.json();
+    if (permData.permalink) {
+      line(`🔗 ${permData.permalink}`);
+    } else {
+      line(`No permalink: ${JSON.stringify(permData).substring(0, 150)}`);
+    }
+  } catch (e: any) {
+    line(`Permalink fetch error: ${e.message}`);
+  }
+
   return NextResponse.json({ ok: true, log });
 }
