@@ -84,13 +84,15 @@ async function findExistingPage(token: string, log: string[]) {
   return null;
 }
 
-async function linkInstagram(pageId: string, pageToken: string): Promise<{ ok: boolean; message: string }> {
+async function linkInstagram(pageId: string, userToken: string, pageToken: string | null = null): Promise<{ ok: boolean; message: string }> {
+  // Use user-level token (not page token) for the /instagram_accounts endpoint
+  const token = userToken;
   const linkResp = await fetch(
     "https://graph.facebook.com/v26.0/" + pageId + "/instagram_accounts",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token: pageToken, instagram_account_id: IG_ID }),
+      body: JSON.stringify({ access_token: token, instagram_account_id: IG_ID }),
     }
   );
   const data: any = await linkResp.json();
@@ -224,7 +226,7 @@ export async function GET(request: NextRequest) {
           existingPageUsed = true;
           log.push("using existing page: " + pageId + " cat=" + pageCategory);
 
-          const linkResult = await linkInstagram(pageId as string, pageToken as string);
+          const linkResult = await linkInstagram(pageId as string, longLivedFbToken, pageToken as string);
           linked = linkResult.ok;
           log.push("link existing: " + (linked ? "ok" : linkResult.message.substring(0, 150)));
         } else if (existingPage) {
@@ -258,7 +260,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (!linked && pageId && pageToken) {
-        const linkResult = await linkInstagram(pageId, pageToken);
+        const linkResult = await linkInstagram(pageId, longLivedFbToken, pageToken);
         linked = linkResult.ok;
         log.push("link final: " + (linkResult.ok ? "ok" : linkResult.message.substring(0, 100)));
       }
