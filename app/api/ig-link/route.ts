@@ -2,9 +2,18 @@ import { prisma } from "@/lib/db/client";
 import { decryptToken } from "@/lib/meta/oauth";
 
 const IG_ID = "17841438935909153";
-const PAGE_ID = "1229304876940609";
-const PAGE_NAME = "Stoic Zodiac";
 const BM_ID = "2052016095704629";
+
+async function getPageIdFromToken(pageToken: string): Promise<{ id: string; name: string } | null> {
+  try {
+    const r = await fetch(
+      `https://graph.facebook.com/v26.0/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
+    );
+    const d: any = await r.json();
+    if (d.id) return { id: d.id, name: d.name || "unknown" };
+  } catch {}
+  return null;
+}
 
 export async function GET() {
   const html = await buildPage();
@@ -33,6 +42,13 @@ async function handleForceLink(): Promise<Response> {
     if (!account.pageToken) return errorResponse("No page token stored — visit /api/auth/token-helper first.");
 
     const pageToken = decryptToken(account.pageToken);
+
+    // Dynamically determine which page this token belongs to
+    const pageInfo = await getPageIdFromToken(pageToken);
+    if (!pageInfo) return errorResponse("Could not determine page ID from token — token may be invalid.");
+    const PAGE_ID = pageInfo.id;
+    const PAGE_NAME = pageInfo.name;
+    log(`<p>Using page: "${PAGE_NAME}" (${PAGE_ID}) — from token /me lookup</p>`);
 
     // Method 1: Direct page-to-IG link via page token
     log(`<h3>Method 1: POST /${PAGE_ID}/instagram_accounts (page token)</h3>`);
@@ -112,7 +128,7 @@ async function handleForceLink(): Promise<Response> {
       log(`<p>You may need to link manually in <a href="https://business.facebook.com/" target="_blank">Facebook Business Suite</a>:
         <ol>
           <li>Go to Business Settings → Accounts → Pages</li>
-          <li>Select "Stoic Zodiac" page</li>
+          <li>Select "${PAGE_NAME}" page</li>
           <li>Go to Settings → Instagram → Connect Account</li>
           <li>Log into @stoiczodiac</li>
         </ol>
@@ -151,24 +167,33 @@ async function buildPage(): Promise<string> {
   // Check IG↔FB page link
   output += `<h2>🔗 IG ↔ Facebook Page Link Status</h2>`;
   let linkedToPage = false;
+  let checkedPageName = "";
   if (pageToken) {
-    for (const pid of [PAGE_ID, "61594011424463"]) {
-      try {
-        const r = await fetch(
-          `https://graph.facebook.com/v26.0/${pid}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
-        );
-        const d = (await r.json()) as Record<string, unknown>;
-        if (d.error) continue;
-        const igBiz = d.instagram_business_account as Record<string, unknown> | undefined;
-        if (igBiz && igBiz.id === IG_ID) {
-          const name = d.name || "?";
-          output += `<p class="success">✅ @stoiczodiac IS linked to "${name}"!</p>`;
-          linkedToPage = true;
-        }
-      } catch { /* skip */ }
+    // Dynamic page ID detection
+    const pageInfo = await getPageIdFromToken(pageToken);
+    if (pageInfo) {
+      for (const pid of [pageInfo.id, "61594011424463"]) {
+        try {
+          const r = await fetch(
+            `https://graph.facebook.com/v26.0/${pid}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageToken)}`
+          );
+          const d = (await r.json()) as Record<string, unknown>;
+          if (d.error) continue;
+          const igBiz = d.instagram_business_account as Record<string, unknown> | undefined;
+          if (igBiz && igBiz.id === IG_ID) {
+            const name = d.name || "?";
+            output += `<p class="success">✅ @stoiczodiac IS linked to "${name}"!</p>`;
+            linkedToPage = true;
+          }
+          checkedPageName = (d.name as string) || "";
+        } catch { /* skip */ }
+      }
     }
     if (!linkedToPage) {
       output += `<p class="error">❌ @stoiczodiac is NOT linked to any Facebook Page.</p>`;
+      if (checkedPageName) {
+        output += `<p>Checked page: "${checkedPageName}" — no Instagram business account linked.</p>`;
+      }
       output += `<p>Try the force-link button below to attempt linking via API:</p>`;
       output += `<form method="post" action="/api/ig-link">
         <input type="hidden" name="action" value="link-page">
@@ -384,7 +409,7 @@ function wrapHtml(body: string): string {
 </style>
 </head>
 <body>
-<h1>🔗 @stoiczodiac (${IG_ID}) → "${PAGE_NAME}"</h1>
+<h1>🔗 @stoiczodiac (${IG_ID})</h1>
 ${body}
 <p style="border-top:1px solid #e0e0e0;padding-top:16px;color:#888;font-size:13px">
   <a href="/api/ig-link">↻ Refresh</a> · <a href="/api/auth/token-helper">Token Helper</a> · Generated ${new Date().toISOString()}

@@ -14,7 +14,6 @@ import { decryptToken } from "@/lib/meta/oauth";
 
 const IG_ID = "17841438935909153";
 const IG_BIZ_ID = "27851105327914297";
-const PAGE_ID = "1229304876940609";
 const FB_APP_ID = "1051360407668084";
 const FB_APP_SECRET = process.env.FACEBOOK_APP_SECRET || "";
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || "2616058292165458";
@@ -102,6 +101,22 @@ export async function GET(req: Request) {
     } catch (e: any) {
       errors.push(`debug_token: ${e.message}`);
     }
+  }
+
+  // Resolve dynamic page ID from token (section 7+ needs the correct page ID)
+  let PAGE_ID = "1229304876940609"; // fallback to old page
+  if (pageToken) {
+    try {
+      const me = await fetchGraph(
+        `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`
+      );
+      const meData = me.body as any;
+      if (meData?.id) {
+        PAGE_ID = meData.id;
+        results.resolvedPageId = PAGE_ID;
+        results.resolvedPageName = meData.name;
+      }
+    } catch {}
   }
 
   // 2. Check IG account type via graph.instagram.com (IGAA token)
