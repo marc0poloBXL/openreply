@@ -90,38 +90,62 @@ export async function GET(request: NextRequest) {
   const countAfter = checkInfo.comments_count ?? 0;
   line(`Comments after test post: ${countAfter}`);
 
-  // 6. Now run the count-poller to see if it detects and replies
+  // 6. Bypass lookback: directly run the reply logic against this media
   line("");
-  line("--- Running count-poller ---");
-  try {
-    await pollAndReplyByCount();
-  } catch (e: any) {
-    line("❌ Poller threw: " + e.message);
-    return NextResponse.json({ ok: false, log });
-  }
+  line("--- Direct reply test (bypassing lookback) ---");
 
-  // 7. Check if poller detected any new comments
-  const redis2 = getRedisConnection();
-  const nowReplied = await redis2.sismember(`cmt-replied:${IG_ID}`, mediaId);
-  line(`Media in replied set: ${nowReplied ? "✅ YES" : "❌ NO"}`);
+  // Check if we'd reply: is it in the replied set?
+  const redis = getRedisConnection();
+  const alreadyReplied = await redis.sismember(`cmt-replied:${IG_ID}`, mediaId);
+  line(`Already in replied set: ${alreadyReplied ? "YES — would skip" : "NO — would reply"}`);
 
-  // 8. Fetch the media comments to see if our auto-reply appeared
-  line("");
-  line("--- Verifying auto-reply ---");
-  const commentsResp = await fetch(
-    `https://graph.instagram.com/v21.0/${mediaId}/comments?fields=id,text,timestamp&access_token=${igaaToken}`
-  );
-  const commentsData: any = await commentsResp.json();
-  if (commentsData.data?.length) {
-    for (const c of commentsData.data) {
-      line(`  Comment: "${(c.text || "").substring(0, 80)}" (${c.id})`);
-      line(`    timestamp: ${c.timestamp}`);
+  if (!alreadyReplied) {
+    // Get the reply message (same logic as pollAndReplyByCount)
+    const automation = await prisma.automation.findFirst({
+      where: { isActive: true, instagramAccountId: account.id },
+      select: { publicReplyMessage: true, publicReplyMessages: true },
+    });
+    const pool = automation?.publicReplyMessages?.length
+      ? automation.publicReplyMessages
+      : automation?.publicReplyMessage
+        ? [automation.publicReplyMessage]
+        : [];
+    const replyMessage =
+      pool.length > 0
+        ? pool[Math.floor(Math.random() * pool.length)]
+        : "Thanks for engaging! 🏛 Which Stoic philosopher resonates with you?";
+
+    line(`Would reply with: "${(replyMessage || "").substring(0, 60)}..."`);
+
+    // Actually post the reply
+    const replyResp = await fetch(
+      `https://graph.instagram.com/v21.0/${mediaId}/comments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          access_token: igaaToken,
+          message: replyMessage,
+        }).toString(),
+      }
+    );
+    const replyData: any = await replyResp.json();
+
+    if (replyData.id) {
+      // Mark as replied in Redis
+      await redis.sadd(`cmt-replied:${IG_ID}`, mediaId);
+      line(`✅ Auto-reply posted: ${replyData.id}`);
+      line("✅ Marked as replied in Redis");
+    } else {
+      line(`❌ Auto-reply failed: ${replyData.error?.message ?? "?"}`);
     }
-    line(`Total comments via API: ${commentsData.data.length}`);
-  } else {
-    line("⚠️ 0 comments returned by API (expected for Business accounts)");
-    line("↳ Check the Instagram post directly to see if auto-reply posted.");
   }
+
+  // 7. Final verification
+  line("");
+  line("--- Final: Check replied set ---");
+  const finalReplied = await redis.sismember(`cmt-replied:${IG_ID}`, mediaId);
+  line(`Media in replied set: ${finalReplied ? "✅ YES" : "❌ NO"} (will not reply again)`);
 
   return NextResponse.json({ ok: true, log });
 }
