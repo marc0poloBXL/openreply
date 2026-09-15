@@ -269,6 +269,26 @@ export async function GET(request: NextRequest) {
       subscribed = subResult.ok;
       log.push("webhook subscribed: " + subscribed);
 
+      // Subscribe via graph.facebook.com with user token (works through Accounts Center)
+      try {
+        const fbSubResp = await fetch(
+          "https://graph.facebook.com/v26.0/" + IG_ID + "/subscribed_apps",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              access_token: longLivedFbToken,
+              subscribed_fields: "comments,messages",
+            }).toString(),
+          }
+        );
+        const fbSubData: any = await fbSubResp.json();
+        const fbSubscribed = Boolean(fbSubData.success);
+        log.push("fb user token sub: " + (fbSubscribed ? "ok" : JSON.stringify(fbSubData).substring(0, 100)));
+      } catch (e: any) {
+        log.push("fb user token sub error: " + e.message);
+      }
+
       const encrypted = encryptToken(pageToken);
       const tokenExp = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000);
       const updateData: any = {
