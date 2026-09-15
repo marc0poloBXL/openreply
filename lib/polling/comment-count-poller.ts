@@ -74,7 +74,9 @@ export async function pollAndReplyByCount(
   const lookbackMs =
     options?.forceLookbackMs ??
     Number(process.env.COMMENT_POLLER_LOOKBACK_HOURS ?? 72) * 3_600_000;
-  const sinceMs = Date.now() - lookbackMs;
+
+  // When forceMediaId is set, bypass the freshness gate entirely
+  const sinceMs = options?.forceMediaId ? 0 : Date.now() - lookbackMs;
   const maxPerSweep = Number(process.env.COMMENT_POLLER_MAX_PER_SWEEP ?? 5);
 
   let mediaList: any[];
