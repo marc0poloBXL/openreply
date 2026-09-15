@@ -1,6 +1,7 @@
 import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
+import { pollAndReplyByCount } from "@/lib/polling/comment-count-poller";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -45,10 +46,18 @@ async function poll() {
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
+// Count-based comment poller (generic auto-replies, no comment text needed)
+setTimeout(() => void pollAndReplyByCount(), 20_000);
+const countPollTimer = setInterval(
+  () => void pollAndReplyByCount(),
+  POLL_INTERVAL_MS
+);
+
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
+  clearInterval(countPollTimer);
   await worker.close();
   process.exit(0);
 }
