@@ -169,6 +169,7 @@ async function tryCreatePage(token: string, log: string[]): Promise<{ id: string
 /**
  * Facebook Login callback — supports both session-based and simple-fix flows.
  * v2 — uses upsert for DB, findFirst fallback, runtime business discovery
+ * v3 — forceCreatePage: skips broken old page when state=simple_fix_create_page
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -185,6 +186,7 @@ export async function GET(request: NextRequest) {
   }
 
   const isSimpleFix = rawState === "simple_fix" || rawState === "simple_fix_create_page";
+  const forceCreatePage = rawState === "simple_fix_create_page";
 
   try {
     const redirectUri = baseUrl + "/api/instagram/callback/facebook";
@@ -212,21 +214,26 @@ export async function GET(request: NextRequest) {
       }
       log.push("logged in as: " + meData.name + " (" + meData.id + ")");
 
-      const existingPage = await findExistingPage(longLivedFbToken, log);
-      if (existingPage?.access_token) {
-        pageToken = existingPage.access_token;
-        pageId = existingPage.id;
-        pageCategory = existingPage.category || "unknown";
-        existingPageUsed = true;
-        log.push("using existing page: " + pageId + " cat=" + pageCategory);
+      // When forceCreatePage is true, skip the broken old page entirely
+      if (!forceCreatePage) {
+        const existingPage = await findExistingPage(longLivedFbToken, log);
+        if (existingPage?.access_token) {
+          pageToken = existingPage.access_token;
+          pageId = existingPage.id;
+          pageCategory = existingPage.category || "unknown";
+          existingPageUsed = true;
+          log.push("using existing page: " + pageId + " cat=" + pageCategory);
 
-        const linkResult = await linkInstagram(pageId as string, pageToken as string);
-        linked = linkResult.ok;
-        log.push("link existing: " + (linked ? "ok" : linkResult.message.substring(0, 150)));
-      } else if (existingPage) {
-        log.push("existing page has no token: " + existingPage.id);
+          const linkResult = await linkInstagram(pageId as string, pageToken as string);
+          linked = linkResult.ok;
+          log.push("link existing: " + (linked ? "ok" : linkResult.message.substring(0, 150)));
+        } else if (existingPage) {
+          log.push("existing page has no token: " + existingPage.id);
+        } else {
+          log.push("no existing Stoic page found");
+        }
       } else {
-        log.push("no existing Stoic page found");
+        log.push("FORCE CREATE: skipping existing page (old page 1229304876940609 is broken)");
       }
 
       if (!pageToken) {

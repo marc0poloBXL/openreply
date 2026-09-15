@@ -102,14 +102,22 @@ export async function GET(req: Request) {
         Comment auto-reply needs one fix: creating a Facebook Page with the right category.
       </p>
       <div style="background:#e8f5e9;border:2px solid #16a34a;border-radius:12px;padding:20px;margin:16px 0;text-align:left;">
+        <p style="font-size:15px;margin:4px 0;"><strong>⬇️ Before clicking — do this first:</strong></p>
+        <p style="font-size:14px;margin:4px 0;">1️⃣ Go to your Facebook page → <strong>Settings → Privacy → Delete Page</strong></p>
+        <p style="font-size:14px;margin:4px 0;">&nbsp;&nbsp;&nbsp;Or click: <a href="https://www.facebook.com/1229304876940609/settings/?tab=remove_page" target="_blank">facebook.com/1229304876940609/settings/?tab=remove_page</a></p>
+        <p style="font-size:14px;margin:4px 0;">&nbsp;&nbsp;&nbsp;This deletes the old "Stoic Zodiac" page that was created as Personal blog</p>
+        <p style="font-size:14px;margin:4px 0;">2️⃣ Then come back here and click the button below ✅</p>
+      </div>
+      <div style="background:#fff3cd;border:2px solid #ff9800;border-radius:12px;padding:20px;margin:16px 0;text-align:left;">
         <p style="font-size:15px;margin:4px 0;"><strong>What this button does:</strong></p>
         <p style="font-size:14px;margin:4px 0;">1️⃣ Opens Facebook Login → click Continue/Authorize</p>
-        <p style="font-size:14px;margin:4px 0;">2️⃣ Creates a new Facebook Page with business category</p>
+        <p style="font-size:14px;margin:4px 0;">2️⃣ Creates a <strong>brand new</strong> Facebook Page with proper business category</p>
         <p style="font-size:14px;margin:4px 0;">3️⃣ Links @stoiczodiac to the new page</p>
         <p style="font-size:14px;margin:4px 0;">4️⃣ Subscribes webhooks for comment events</p>
       </div>
       <p style="color:#c00;font-size:14px;">
-        ⚠️ A new Facebook Page "Stoic Zodiac" will be created (Brand category).
+        ⚠️ This creates a NEW "Stoic Zodiac" page (Brand category).<br>
+        Make sure you deleted the old page first (step above) so you can approve the new one.
       </p>
       <a href="${oauthUrl}" class="btn" style="display:inline-block;background:#1877F2;color:white;padding:18px 48px;border-radius:10px;text-decoration:none;font-size:20px;font-weight:600;margin:20px 0;">
         🔥 Fix Comment Auto-Reply NOW
