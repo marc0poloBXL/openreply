@@ -27,14 +27,8 @@ const DEFAULT_REPLY =
 /**
  * One sweep: fetch recent media, check comments_count, post auto-replies.
  * Best-effort — never throws. Logs through operationalEvent on success.
- *
- * Accepts an optional options object for testing:
- *   - forceMediaId: skip the media list, process only this one media
- *   - forceLookbackMs: override the lookback window (default reads env)
  */
-export async function pollAndReplyByCount(
-  options?: { forceMediaId?: string; forceLookbackMs?: number }
-): Promise<void> {
+export async function pollAndReplyByCount(): Promise<void> {
   const account = await prisma.instagramAccount.findFirst({
     where: { instagramId: IG_ID },
     orderBy: { connectedAt: "desc" },
@@ -71,45 +65,27 @@ export async function pollAndReplyByCount(
 
   // ---------- fetch recent media ----------
 
-  const lookbackMs =
-    options?.forceLookbackMs ??
-    Number(process.env.COMMENT_POLLER_LOOKBACK_HOURS ?? 72) * 3_600_000;
-
-  // When forceMediaId is set, bypass the freshness gate entirely
-  const sinceMs = options?.forceMediaId ? 0 : Date.now() - lookbackMs;
+  const lookbackMs = Number(process.env.COMMENT_POLLER_LOOKBACK_HOURS ?? 72) * 3_600_000;
+  const sinceMs = Date.now() - lookbackMs;
   const maxPerSweep = Number(process.env.COMMENT_POLLER_MAX_PER_SWEEP ?? 5);
 
   let mediaList: any[];
-  if (options?.forceMediaId) {
-    // Test mode: process only this single media (bypasses lookback)
-    try {
-      const resp = await fetch(
-        `https://graph.instagram.com/v21.0/${options.forceMediaId}?fields=id,media_type,comments_count,timestamp&access_token=${igaaToken}`
-      );
-      const body: any = await resp.json();
-      mediaList = body.id ? [body] : [];
-    } catch (e: any) {
-      console.log("[CountPoller] Force-media fetch threw:", e.message);
-      return;
-    }
-  } else {
-    const url = new URL("https://graph.instagram.com/v21.0/me/media");
-    url.searchParams.set("fields", "id,media_type,comments_count,timestamp");
-    url.searchParams.set("limit", String(process.env.COMMENT_POLLER_MEDIA_LIMIT ?? 20));
-    url.searchParams.set("access_token", igaaToken);
+  const url = new URL("https://graph.instagram.com/v21.0/me/media");
+  url.searchParams.set("fields", "id,media_type,comments_count,timestamp");
+  url.searchParams.set("limit", String(process.env.COMMENT_POLLER_MEDIA_LIMIT ?? 20));
+  url.searchParams.set("access_token", igaaToken);
 
-    try {
-      const resp = await fetch(url.toString());
-      const body: any = await resp.json();
-      if (body.error) {
-        console.log("[CountPoller] Media fetch error:", body.error.message);
-        return;
-      }
-      mediaList = body.data ?? [];
-    } catch (e: any) {
-      console.log("[CountPoller] Media fetch threw:", e.message);
+  try {
+    const resp = await fetch(url.toString());
+    const body: any = await resp.json();
+    if (body.error) {
+      console.log("[CountPoller] Media fetch error:", body.error.message);
       return;
     }
+    mediaList = body.data ?? [];
+  } catch (e: any) {
+    console.log("[CountPoller] Media fetch threw:", e.message);
+    return;
   }
 
   // ---------- check each media and reply ----------

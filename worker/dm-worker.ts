@@ -1,14 +1,13 @@
 import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
-import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { pollAndReplyByCount } from "@/lib/polling/comment-count-poller";
 import os from "node:os";
 
 const worker = createDMWorker();
 const startedAt = new Date().toISOString();
 const HEARTBEAT_INTERVAL_MS = 30_000;
-// Polling safety net for comments that webhooks miss. Runs in the worker because
-// it must fire every few minutes and Vercel's free crons only run once a day.
+// Count-based comment poller. Runs in the worker because Vercel's free crons
+// only fire once a day — this must fire every few minutes.
 const POLL_INTERVAL_MS = Number(
   process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
 );
@@ -31,22 +30,7 @@ async function heartbeat() {
 void heartbeat();
 const heartbeatTimer = setInterval(() => void heartbeat(), HEARTBEAT_INTERVAL_MS);
 
-async function poll() {
-  console.log("[DM Worker] Polling sweep starting at", new Date().toISOString());
-  try {
-    await reconcileComments();
-    console.log("[DM Worker] Polling sweep complete");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[DM Worker] Comment reconciliation failed:", message);
-  }
-}
-
-// Kick off one sweep shortly after boot, then on a fixed interval.
-setTimeout(() => void poll(), 10_000);
-const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
-
-// Count-based comment poller (generic auto-replies, no comment text needed)
+// Count-based comment poller (generic auto-replies via comments_count)
 setTimeout(() => void pollAndReplyByCount(), 20_000);
 const countPollTimer = setInterval(
   () => void pollAndReplyByCount(),
@@ -56,7 +40,6 @@ const countPollTimer = setInterval(
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
-  clearInterval(pollTimer);
   clearInterval(countPollTimer);
   await worker.close();
   process.exit(0);
