@@ -286,7 +286,7 @@ export default function QuizPage() {
               onClick={handleRestart}
               style={{
                 width: "100%", marginTop: 12, padding: "14px 24px",
-                backgound: "#E8E0D4", color: "#2C2A26", border: "1px solid #D8D0C4",
+                background: "#E8E0D4", color: "#2C2A26", border: "1px solid #D8C0C4",
                 borderRadius: 10, fontSize: 14, cursor: "pointer",
               }}
             >
