@@ -22,7 +22,7 @@ import { decryptToken } from "@/lib/meta/oauth";
 const IG_ID = "17841438935909153";
 
 const DEFAULT_REPLY =
-  "Thanks for engaging! 🏛 Which Stoic philosopher resonates with you?";
+  "Thanks for engaging! 🔗 Which Stoic philosopher matches YOUR sign? Take the quiz in our bio!";
 
 /**
  * One sweep: fetch recent media, check comments_count, post auto-replies.

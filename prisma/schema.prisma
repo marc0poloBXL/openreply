@@ -84,6 +84,7 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  leads             Lead[]
 
   @@index([ownerId])
 }
@@ -346,6 +347,46 @@ model OperationalEvent {
   @@index([source])
   @@index([level])
   @@index([createdAt])
+}
+
+/// A person who took the "What's Your Stoic Sign?" quiz and opted into follow-up.
+model Lead {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  email       String   @unique
+  zodiacSign  String?
+  stoicMatch  String?
+  stoicTitle  String?
+  element     String?  /// fire / earth / air / water
+  phone       String?
+  source      String   @default("quiz") /// quiz | instagram | referral
+  leadScore   Int      @default(0)
+  status      String   @default("new")  /// new | nurturing | warm | customer | churned
+  lastContactedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  events    LeadEvent[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([zodiacSign])
+}
+
+/// Every interaction a lead has with the system (quiz completed, email opened,
+/// link clicked, product purchased).
+model LeadEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String   /// quiz_completed | email_sent | email_opened | link_clicked | purchased
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([type])
 }
 
 enum WorkspaceRole {
