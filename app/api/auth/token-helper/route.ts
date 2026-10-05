@@ -495,7 +495,7 @@ async function processLongToken(longLivedToken: string, req: Request): Promise<R
          <p><strong>✅ Webhook:</strong> ${subscribed ? "Subscribed!" : "⚠️ Not subscribed"}</p>
        </div>
        <p>${linkResult.includes("success") ? "Your DM automation is fully configured and can now read comments." : "If the link failed, <strong>refresh this page with a fresh token from Graph API Explorer</strong> making sure you added <code>pages_manage_metadata</code> permission."}</p>
-       <p><a href="/api/ig-link" class="btn-link">→ Check link status on /api/ig-link</a></p>
+       <p><a href="/diagnostics" class="btn-link">→ Check connection status</a></p>
        <hr>
        <p style="font-size:13px;color:#666;">
          The long-lived token will be auto-refreshed by the cron job before it expires.

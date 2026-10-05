@@ -180,11 +180,11 @@ export async function GET(request: NextRequest) {
   const baseUrl = getBaseUrl();
 
   if (errorParam) {
-    return NextResponse.redirect(baseUrl + "/api/fb-fix?error=denied");
+    return NextResponse.redirect(baseUrl + "/settings?facebook=denied");
   }
 
   if (!code) {
-    return NextResponse.redirect(baseUrl + "/api/fb-fix?error=invalid");
+    return NextResponse.redirect(baseUrl + "/settings?facebook=invalid");
   }
 
   const isSimpleFix = rawState === "simple_fix" || rawState === "simple_fix_create_page";
@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
       if (!meData.id) {
         return htmlPage("Error",
           '<div class="card error"><h1>Facebook Login Issue</h1><p>Could not get your user info.</p><pre>' +
-          JSON.stringify(meData) + '</pre><a href="' + baseUrl + '/api/fb-fix" class="btn" style="margin-top:16px">Try Again</a></div>');
+          JSON.stringify(meData) + '</pre><a href="' + baseUrl + '/settings?facebook=retry" class="btn" style="margin-top:16px">Try Again</a></div>');
       }
       log.push("logged in as: " + meData.name + " (" + meData.id + ")");
 
@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
 
       if (!pageToken) {
         let errorHtml = '<div class="card error"><h1>Could Not Get Page Token</h1><p>All approaches failed:</p><pre>' + log.join("\n") + '</pre>'
-          + '<a href="' + baseUrl + '/api/fb-fix" class="btn" style="margin-top:16px">Try Again</a></div>';
+          + '<a href="' + baseUrl + '/settings?facebook=retry" class="btn" style="margin-top:16px">Try Again</a></div>';
         return htmlPage("Error", errorHtml);
       }
 
@@ -341,7 +341,7 @@ export async function GET(request: NextRequest) {
         + '<p>Webhook: ' + (subscribed ? "Subscribed" : "Already subscribed (existing setup)") + '</p>'
         + '<p>Page token stored: ✅</p>'
         + '<hr><p style="font-size:12px;color:#888;">Log:</p><pre>' + log.join("\n") + '</pre>'
-        + '<a href="' + baseUrl + '/api/fix-all" class="btn" style="margin-top:12px">Check Full Status</a></div>');
+        + '<a href="' + baseUrl + '/diagnostics" class="btn" style="margin-top:12px">Check Connection Status</a></div>');
     }
 
     // --- STANDARD FLOW ---
@@ -425,11 +425,11 @@ export async function GET(request: NextRequest) {
     if (rawState?.startsWith("simple_fix")) {
       return htmlPage("Error",
         '<div class="card error"><h1>Error</h1><p>' + message.replace(/</g, "&lt;").substring(0, 500)
-        + '</p><a href="' + baseUrl + '/api/fb-fix" class="btn" style="margin-top:16px">Try Again</a></div>');
+        + '</p><a href="' + baseUrl + '/settings?facebook=retry" class="btn" style="margin-top:16px">Try Again</a></div>');
     }
 
     return NextResponse.redirect(
-      baseUrl + "/api/fb-fix?error=" + encodeURIComponent(message.substring(0, 200))
+      baseUrl + "/settings?facebook=error"
     );
   }
 }
