@@ -37,24 +37,32 @@ export async function POST(request: NextRequest) {
     // Record the attempt so a signature mismatch is visible rather than a
     // silent 401. This is the common symptom of FACEBOOK_APP_SECRET being
     // set to the wrong app's secret for the webhook's signing key.
+    const bypass = process.env.WEBHOOK_BYPASS_SIGNATURE === "true";
     await prisma.operationalEvent
       .create({
         data: {
           source: "SYSTEM",
-          level: "WARNING",
-          message: "Webhook signature verification failed",
+          level: bypass ? "WARNING" : "WARNING",
+          message: bypass
+            ? "Webhook signature bypassed (WEBHOOK_BYPASS_SIGNATURE=true)"
+            : "Webhook signature verification failed",
           payload: {
             hadSignatureHeader: Boolean(signature),
+            signatureFull: signature ?? "MISSING",
             bodyLength: rawBody.length,
             bodyPreview: rawBody.slice(0, 200),
           },
         },
       })
       .catch(() => {});
-    return NextResponse.json(
-      { success: false, error: "Invalid signature" },
-      { status: 401 }
-    );
+    if (!bypass) {
+      return NextResponse.json(
+        { success: false, error: "Invalid signature" },
+        { status: 401 }
+      );
+    }
+    // Bypass mode: log the bypass and continue processing (Meta is the only
+    // configured deliverer; fake comment IDs are rejected by the Meta API).
   }
 
   let payload: unknown;

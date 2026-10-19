@@ -9,10 +9,16 @@ export function verifyWebhookSignature(
   // Instagram-Login apps sign webhooks with the Instagram app secret, while
   // Facebook-Login apps use the Facebook app secret. Both belong to the same
   // app, so accept a signature that matches either — this avoids a config
-  // guess about which key Meta uses for a given app type.
+  // guess about which key Meta uses for a given app type. Some accounts also
+  // receive deliveries signed by a third (legacy) app; allow extra secrets
+  // through WEBHOOK_SIGNING_SECRETS (comma-separated).
   const secrets = [
     process.env.FACEBOOK_APP_SECRET,
     process.env.INSTAGRAM_APP_SECRET,
+    ...(process.env.WEBHOOK_SIGNING_SECRETS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   ].filter((s): s is string => Boolean(s));
 
   if (secrets.length === 0) {

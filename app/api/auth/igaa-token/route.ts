@@ -18,7 +18,7 @@ const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
 import { encryptToken, createTokenRefreshState } from "@/lib/meta/oauth";
 import { prisma } from "@/lib/db/client";
 
-const BASE = "https://openreply-zeta-ruby.vercel.app";
+const BASE = process.env.BASE_URL || "https://openreply-zeta-ruby.vercel.app";
 const SCOPE = encodeURIComponent("instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights");
 const CALLBACK_URI = encodeURIComponent(BASE + "/api/instagram/callback");
 
