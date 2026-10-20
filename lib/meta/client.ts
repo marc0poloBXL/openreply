@@ -798,12 +798,12 @@ export async function subscribeInstagramAccountToWebhooks(
   instagramAccountId: string,
   accessToken: string
 ): Promise<{ success: boolean }> {
-  // Use Facebook Graph API for subscription — the graph.instagram.com
-  // endpoint works but may not deliver real comment webhooks with an IG
-  // token. With a Page token on graph.facebook.com the subscription is
-  // properly recognized by Meta.
+  // Route by token type like every other call in this file: IGAA tokens go
+  // to graph.instagram.com (known-good for subscribed_apps since 2026-09-10),
+  // EA/Page tokens to graph.facebook.com. Posting an IGAA token to the FB
+  // graph produces code 190 "Cannot parse access token".
   const response = await fetch(
-    `${facebookGraphBase()}/${instagramAccountId}/subscribed_apps`,
+    `${baseUrlForToken(accessToken)}/${instagramAccountId}/subscribed_apps`,
     {
       method: "POST",
       headers: {

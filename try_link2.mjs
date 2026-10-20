@@ -1,5 +1,5 @@
 // try_link2.mjs — investigate page IDs and Business Manager
-const USER_TOKEN = 'EAAO8NOuhRXQBSSnKot3LTPhFYiT8LSFplNLB1iuJsVwCGbbTHTtRNuTY07JnD5OZBe4CZC9s5ZBmdRjAkOFujk4aceocfPNgYzR3hGnt9ZAjBohpywRxy1HxAQL4oGWwDHbjPGmbIjTI15IhGLTZCAEQIDKd2WA3ARDhoyO5OW9h5CwE2wyuYz3Oy69ViB7ZBmpbAoX03Y8iUU0ZCrEpvhlG67mA6h3vARucnSp5C0NTmMPNirVZBXMFpQaZBXjbUA178VkUnCLdJBR4J6ZASymbZCy';
+const USER_TOKEN = process.env.FB_USER_TOKEN;
 const PAGE_ID_NEW = '1229304876940609';
 const PAGE_ID_OLD = '61594011424463';
 const IG_ID = '17841438935909153';
@@ -56,9 +56,11 @@ async function main() {
   }
 
   // Try with app token
-  const APP_TOKEN = '1051360407668084|b2708ce0c790783fbf27c0dfcc0e1459';
+  const FB_APP_ID = '1051360407668084';
+  const FB_APP_SECRET = process.env.FB_APP_SECRET;
+  const APP_TOKEN = `${FB_APP_ID}|${FB_APP_SECRET}`;
   console.log('\n=== App subscriptions detailed ===');
-  r = await call('GET', `https://graph.facebook.com/v26.0/1051360407668084/subscriptions?access_token=${APP_TOKEN}`);
+  r = await call('GET', `https://graph.facebook.com/v26.0/${FB_APP_ID}/subscriptions?access_token=${APP_TOKEN}`);
   console.log(JSON.stringify(r.body, null, 2));
 
   // Check the IG account's subscribed_apps

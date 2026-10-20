@@ -1,5 +1,5 @@
 // try-bm.mjs — Try to get page token via Business Portfolio
-const token = process.argv[2] || "EAAO8NOuhRXQBSZADbDByHjuTs6ijoyIVZAAZBAdFtZAZCwvCEZC9ulQBqpg3gwvOAKKOBnZBdQMGFwuVuOHj5enLl6gdrtC67VhDgQTlXqcQuxB2qobZBYfyhZBZAVd4kz8eOoIg2fDw8pBQVhRfeRR3h2SKzqIWnWl8NeBUgBUqc7W6nxZBSPnQR5MN6raRDVLCgZDZD";
+const token = process.argv[2] || process.env.FB_BM_TOKEN;
 const BM_ID = "2052016095704629";
 
 async function call(method, url, body) {

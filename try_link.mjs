@@ -1,6 +1,6 @@
 // try_link.mjs — try linking IG to FB page via different methods
-const USER_TOKEN = 'EAAO8NOuhRXQBSSnKot3LTPhFYiT8LSFplNLB1iuJsVwCGbbTHTtRNuTY07JnD5OZBe4CZC9s5ZBmdRjAkOFujk4aceocfPNgYzR3hGnt9ZAjBohpywRxy1HxAQL4oGWwDHbjPGmbIjTI15IhGLTZCAEQIDKd2WA3ARDhoyO5OW9h5CwE2wyuYz3Oy69ViB7ZBmpbAoX03Y8iUU0ZCrEpvhlG67mA6h3vARucnSp5C0NTmMPNirVZBXMFpQaZBXjbUA178VkUnCLdJBR4J6ZASymbZCy';
-const PAGE_TOKEN = 'EAAO8NOuhRXQBSXZCgXsJKOlfhRQrAJZA3fPv4WeGog4WXJgKIPT9xrDuqtIkMNBIoxDYbUmA3G8ZCCRRiG9IJwvUzw5QEjkLfCDK6JDPtJ7BtN0bFRTgRC2XbiXr3VZCKLC6xcn9cmiZAcHNYBqmnVHUTb2Uoz3UqJphZCX3U5n7OvdZCyHPDVD9HrdZA86ZAu6bTx9El3BZBJ3pCogsZAkmRqe1guTaUmvOIZA4Mk5fDBcZD';
+const USER_TOKEN = process.env.FB_USER_TOKEN;
+const PAGE_TOKEN = process.env.FB_PAGE_TOKEN;
 const IG_ID = '17841438935909153';
 const PAGE_ID = '1229304876940609';
 
@@ -47,7 +47,10 @@ async function main() {
 
   // 6. Check current subscriptions
   console.log('\n6. Current subscriptions on app 1051360407668084:');
-  r = await call('GET', `https://graph.facebook.com/v26.0/1051360407668084/subscriptions?access_token=1051360407668084|b2708ce0c790783fbf27c0dfcc0e1459`);
+  const FB_APP_ID = '1051360407668084';
+	const FB_APP_SECRET = process.env.FB_APP_SECRET;
+	const appToken = `${FB_APP_ID}|${FB_APP_SECRET}`;
+	r = await call('GET', `https://graph.facebook.com/v26.0/1051360407668084/subscriptions?access_token=${appToken}`);
   console.log(JSON.stringify(r.body, null, 2));
 }
 

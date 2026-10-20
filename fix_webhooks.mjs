@@ -1,14 +1,14 @@
 // fix_webhooks.mjs — Set up Instagram App webhook programmatically
 const IG_APP_ID = '2616058292165458';
 const FB_APP_ID = '1051360407668084';
-const FB_APP_SECRET = 'b2708ce0c790783fbf27c0dfcc0e1459';
+const FB_APP_SECRET = process.env.FB_APP_SECRET;
 const CALLBACK_URL = 'https://openreply-zeta-ruby.vercel.app/api/webhook';
 const VERIFY_TOKEN = 'stoiczodiac-webhook-2026';
 const IG_ID = '17841438935909153';
 const PAGE_ID = '1229304876940609';
 const BM_ID = '2052016095704629';
 
-const USER_TOKEN = process.argv[2] || 'EAAO8NOuhRXQBSSnKot3LTPhFYiT8LSFplNLB1iuJsVwCGbbTHTtRNuTY07JnD5OZBe4CZC9s5ZBmdRjAkOFujk4aceocfPNgYzR3hGnt9ZAjBohpywRxy1HxAQL4oGWwDHbjPGmbIjTI15IhGLTZCAEQIDKd2WA3ARDhoyO5OW9h5CwE2wyuYz3Oy69ViB7ZBmpbAoX03Y8iUU0ZCrEpvhlG67mA6h3vARucnSp5C0NTmMPNirVZBXMFpQaZBXjbUA178VkUnCLdJBR4J6ZASymbZCy';
+const USER_TOKEN = process.argv[2] || process.env.FB_USER_TOKEN;
 
 async function call(method, url, body, form) {
   const opts = { method, headers: {} };
