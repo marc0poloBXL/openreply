@@ -69,10 +69,30 @@ export async function GET(request: NextRequest) {
       // Upsert the account row keyed on the unique instagramId, bootstrapping
       // the workspace chain first if this is a fresh database. Token refresh
       // has no session, so it cannot rely on the signup path.
-      await upsertStoicInstagramAccount({
+      const account = await upsertStoicInstagramAccount({
         accessToken: encrypted,
         tokenExpiresAt: expiresAt,
       });
+
+      // A fresh token can also drop the webhook subscription, and earlier
+      // subscriptions omitted messaging_postbacks (button taps) entirely, so
+      // re-subscribe here. Non-fatal — a failed subscription must not fail
+      // the token refresh.
+      try {
+        const subscription = await subscribeInstagramAccountToWebhooks(
+          account.instagramId,
+          longToken
+        );
+        if (subscription.success) {
+          await prisma.instagramAccount.update({
+            where: { id: account.id },
+            data: { webhookSubscribed: true },
+          });
+        }
+      } catch {
+        // Leave webhookSubscribed as-is; can be retried with
+        // `npx tsx prisma/resubscribe-webhooks.ts`.
+      }
 
       return NextResponse.redirect(`${baseUrl}/api/auth/igaa-token?success=true`);
     } catch (err) {
