@@ -13,10 +13,9 @@ const APP_ID = process.env.INSTAGRAM_APP_ID || "2616058292165458";
 const APP_SECRET =
   process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
-const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
 
 import { encryptToken, createTokenRefreshState } from "@/lib/meta/oauth";
-import { prisma } from "@/lib/db/client";
+import { upsertStoicInstagramAccount } from "@/lib/instagram-accounts";
 
 const BASE = process.env.BASE_URL || "https://openreply-zeta-ruby.vercel.app";
 const SCOPE = encodeURIComponent("instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights");
@@ -166,9 +165,9 @@ async function handleTokenPaste(rawToken: string, req: Request): Promise<Respons
     const expiresAt = new Date(
       Date.now() + Math.min(expiresIn ?? 60 * 24 * 60 * 60, 60 * 24 * 60 * 60) * 1000
     );
-    await prisma.instagramAccount.update({
-      where: { id: IG_ACCOUNT_DB_ID },
-      data: { accessToken: encrypted, tokenExpiresAt: expiresAt },
+    await upsertStoicInstagramAccount({
+      accessToken: encrypted,
+      tokenExpiresAt: expiresAt,
     });
 
     return new Response(

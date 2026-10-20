@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/env";
-import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
+import { canConnectInstagramAccount, upsertStoicInstagramAccount } from "@/lib/instagram-accounts";
 import { subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
@@ -11,8 +11,13 @@ import {
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
 
-/** Known account row for @stoiczodiac, used in token-refresh mode. */
-const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
+/**
+ * Known identity of the @stoiczodiac Instagram account, used in token-refresh
+ * mode. Token refresh runs without a session, so on a fresh database (e.g.
+ * right after switching providers) the shared helper bootstraps the rows the
+ * foreign keys require (minimal owner user + workspace + OWNER membership)
+ * and then upserts the account row keyed on the unique instagramId.
+ */
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -60,9 +65,13 @@ export async function GET(request: NextRequest) {
 
       const encrypted = encryptToken(longToken);
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
-      await prisma.instagramAccount.update({
-        where: { id: IG_ACCOUNT_DB_ID },
-        data: { accessToken: encrypted, tokenExpiresAt: expiresAt },
+
+      // Upsert the account row keyed on the unique instagramId, bootstrapping
+      // the workspace chain first if this is a fresh database. Token refresh
+      // has no session, so it cannot rely on the signup path.
+      await upsertStoicInstagramAccount({
+        accessToken: encrypted,
+        tokenExpiresAt: expiresAt,
       });
 
       return NextResponse.redirect(`${baseUrl}/api/auth/igaa-token?success=true`);
