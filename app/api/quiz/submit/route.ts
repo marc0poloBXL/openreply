@@ -23,7 +23,13 @@ export async function POST(request: NextRequest) {
     // Grade (server-side, never trust the client)
     const result = gradeQuiz(answers);
 
-    const workspaceId = await getCurrentWorkspaceId().catch(() => null);
+    // Public endpoint — no session guaranteed. Prefer an authenticated session's
+    // workspace, fall back to the server-side LEADS_WORKSPACE_ID env so the CRM
+    // dashboard can always find leads.
+    const workspaceId =
+      (await getCurrentWorkspaceId().catch(() => null)) ||
+      process.env.LEADS_WORKSPACE_ID ||
+      null;
 
     // Upsert lead
     const lead = await prisma.lead.upsert({

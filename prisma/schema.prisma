@@ -254,7 +254,12 @@ model DmLog {
   @@index([workspaceId])
   @@index([automationId])
   @@index([instagramAccountId])
-  @@index([status])
+  @@index([commentId])
+  @@index([automationId, commenterId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@index([automationId, status, createdAt])
+  @@index([instagramAccountId, commenterId, status])
 }
 
 // Every comment the system has seen, from either the webhook or the polling
@@ -359,19 +364,31 @@ model Lead {
   stoicTitle  String?
   element     String?  /// fire / earth / air / water
   phone       String?
-  source      String   @default("quiz") /// quiz | instagram | referral
+  source      String   @default("quiz") /// quiz | instagram | referral | birthday_reading
   leadScore   Int      @default(0)
   status      String   @default("new")  /// new | nurturing | warm | customer | churned
   lastContactedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  events    LeadEvent[]
+  consentEmail     Boolean   @default(false)
+  consentSms       Boolean   @default(false)
+  consentEmailAt   DateTime?
+  consentSmsAt     DateTime?
+  birthDate        DateTime? @db.Date
+  birthTime        String?   /// "14:30" or null
+  birthplace       String?
+
+  workspace         Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  events            LeadEvent[]
+  birthdayReadings  BirthdayReading[]
+  scheduledFollowups ScheduledFollowup[]
 
   @@index([workspaceId])
   @@index([status])
   @@index([zodiacSign])
+  @@index([consentEmail])
+  @@index([consentSms])
 }
 
 /// Every interaction a lead has with the system (quiz completed, email opened,
@@ -379,7 +396,7 @@ model Lead {
 model LeadEvent {
   id        String   @id @default(cuid())
   leadId    String
-  type      String   /// quiz_completed | email_sent | email_opened | link_clicked | purchased
+  type      String   /// quiz_completed | email_sent | email_opened | link_clicked | purchased | birthday_reading_requested | birthday_reading_sent | consent_email | consent_sms | followup_sent
   metadata  Json?
   createdAt DateTime @default(now())
 
@@ -387,6 +404,81 @@ model LeadEvent {
 
   @@index([leadId])
   @@index([type])
+  @@index([leadId, createdAt])
+}
+
+/// A birthday reading requested by a lead.
+model BirthdayReading {
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  birthDate       DateTime @db.Date
+  birthTime       String?  /// "14:30" or null
+  birthplace      String?
+  readingType     String   @default("stoic-life-blueprint") /// which prompt template
+  readingText     String?  /// the generated reading
+  pdfUrl          String?  /// link to downloadable PDF
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+/// A defined campaign (funnel) that triggers on a specific event.
+model FollowupCampaign {
+  id            String   @id @default(cuid())
+  name          String
+  triggerEvent  String   /// e.g. "birthday_reading_requested"
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  steps FollowupStep[]
+
+  @@index([triggerEvent])
+  @@index([isActive])
+}
+
+/// One step in a followup campaign — email, SMS, or wait.
+model FollowupStep {
+  id              String   @id @default(cuid())
+  campaignId      String
+  campaign        FollowupCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  stepNumber      Int
+  type            String   /// "EMAIL" | "SMS" | "WAIT"
+  waitDays        Int      @default(0)
+  emailSubject    String?
+  emailBody       String?  /// HTML template
+  smsBody         String?
+  conditionType   String?  /// null (always) | "purchased" | "not_purchased" | "clicked" | "not_opened"
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  scheduledFollowups ScheduledFollowup[]
+
+  @@unique([campaignId, stepNumber])
+  @@index([campaignId])
+}
+
+/// A followup step scheduled for a specific lead.
+model ScheduledFollowup {
+  id              String     @id @default(cuid())
+  leadId          String
+  lead            Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  followupStepId  String
+  followupStep    FollowupStep @relation(fields: [followupStepId], references: [id], onDelete: Cascade)
+  status          String     @default("PENDING") /// PENDING | SENT | SKIPPED | FAILED
+  scheduledAt     DateTime
+  sentAt          DateTime?
+  errorMessage    String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([leadId, followupStepId])
+  @@index([leadId, status])
+  @@index([status, scheduledAt])
 }
 
 enum WorkspaceRole {
