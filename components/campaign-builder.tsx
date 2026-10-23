@@ -37,6 +37,7 @@ interface LoadedCampaign {
   keywords: string[];
   matchAnyWord: boolean;
   dmTriggerEnabled: boolean;
+  dmLeadMagnetEnabled: boolean;
   dmMessage: string;
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
@@ -158,6 +159,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
   const [keywordText, setKeywordText] = useState("");
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
+  const [dmLeadMagnetEnabled, setDmLeadMagnetEnabled] = useState(false);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
   const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
@@ -259,6 +261,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
+        setDmLeadMagnetEnabled(c.dmLeadMagnetEnabled ?? false);
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
           c.publicReplyMessages?.length
@@ -407,6 +410,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmTriggerEnabled,
+      dmLeadMagnetEnabled,
       dmMessage,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
@@ -737,6 +741,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               {matchMode === "any"
                 ? "Every DM to this account gets the reply below — use with care."
                 : "A DM containing any of these words gets the same reply, no comment needed."}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <span className="text-sm text-foreground">
+              lead magnet: ask their zodiac sign, send the free
+              report, offer the full $27 chart
+            </span>
+            <Toggle
+              on={dmLeadMagnetEnabled}
+              onToggle={() => setDmLeadMagnetEnabled(!dmLeadMagnetEnabled)}
+            />
+          </div>
+          {dmLeadMagnetEnabled && (
+            <p className="text-xs text-muted">
+              The DM asks their zodiac sign, emails the free report, then offers
+              the full chart ($27) built from exact birth time and birthplace.
             </p>
           )}
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
