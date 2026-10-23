@@ -145,6 +145,7 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  dmFlowStates DmFlowState[]
 
   @@index([workspaceId])
 }
@@ -187,6 +188,10 @@ model Automation {
   // postId / matchAnyPost do not apply to it.
   dmTriggerEnabled Boolean @default(false)
   dmMessage      String
+  // Lead-magnet conversation: when enabled, a matching DM starts a guided
+  // flow (ask zodiac sign → ask email → deliver free report → upsell) instead
+  // of sending the tracked-link button.
+  dmLeadMagnetEnabled Boolean @default(false)
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
@@ -215,6 +220,7 @@ model Automation {
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
+  dmFlowStates     DmFlowState[]
 
   @@index([workspaceId])
   @@index([instagramAccountId])
@@ -276,6 +282,31 @@ model ProcessedComment {
   seenAt             DateTime @default(now())
 
   @@index([instagramAccountId])
+}
+
+// One row per user per lead-magnet campaign: tracks where the user is in the
+// guided DM conversation (which question was asked, what they answered, whether
+// the free report was delivered). Drives the state machine in the DM worker.
+model DmFlowState {
+  id                 String   @id @default(cuid())
+  automationId       String
+  instagramAccountId String
+  userId             String
+  step               String   @default("ask_zodiac") // ask_zodiac | ask_email | awaiting_delivery | done
+  zodiacSign         String?
+  email              String?
+  readingId          String?  // BirthdayReading id once the free report is generated
+  attemptCount       Int      @default(0)
+  lastMessageAt      DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  automation       Automation       @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  birthdayReading  BirthdayReading? @relation(fields: [readingId], references: [id], onDelete: SetNull)
+
+  @@unique([automationId, userId])
+  @@index([instagramAccountId, step])
 }
 
 model TrackedLink {
@@ -382,6 +413,7 @@ model Lead {
   workspace         Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   events            LeadEvent[]
   birthdayReadings  BirthdayReading[]
+  payments          Payment[]
   scheduledFollowups ScheduledFollowup[]
 
   @@index([workspaceId])
@@ -412,7 +444,9 @@ model BirthdayReading {
   id              String   @id @default(cuid())
   leadId          String
   lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  birthDate       DateTime @db.Date
+  // Nullable: DM lead-magnet readings are keyed by zodiac sign only (no birth
+  // date is collected in that flow). Web-form readings always set it.
+  birthDate       DateTime? @db.Date
   birthTime       String?  /// "14:30" or null
   birthplace      String?
   readingType     String   @default("stoic-life-blueprint") /// which prompt template
@@ -421,8 +455,32 @@ model BirthdayReading {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  flowStates DmFlowState[]
+
   @@index([leadId])
   @@index([createdAt])
+}
+
+/// A paid order for the full Stoic Birth Chart (birth date + time + place).
+/// One payment refers to the lead it came from; nothing here stores card data.
+model Payment {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// "stripe" | "paypal"
+  provider   String
+  /// provider's checkout/payment id
+  providerId String?
+  amountCents Int      @default(2700)
+  currency   String   @default("usd")
+  status     String   @default("pending") /// pending | paid
+  /// the paid full-chart reading, generated after payment
+  readingId  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([status])
 }
 
 /// A defined campaign (funnel) that triggers on a specific event.

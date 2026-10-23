@@ -17,6 +17,7 @@
 
 import http from "http";
 import crypto from "crypto";
+import "dotenv/config";
 import { Client } from "pg";
 
 const APP_ID = "1051360407668084";
@@ -122,7 +123,7 @@ async function subscribeWebhooks(pageToken) {
 
 // Store the page token in the database
 async function storeToken(pageToken) {
-  if (!process.env.DATABASE_URL && !process.env.ENCRYPTION_KEY) {
+  if (!process.env.DATABASE_URL || !process.env.ENCRYPTION_KEY) {
     console.log("\n⚠️ No DB credentials in environment. Token not stored.");
     console.log("   Here is your page token (save it somewhere safe):");
     console.log("   " + pageToken);
@@ -138,7 +139,7 @@ async function storeToken(pageToken) {
   const enc = Buffer.concat([cipher.update(pageToken, "utf8"), cipher.final()]);
   const combined = Buffer.concat([iv, cipher.getAuthTag(), enc]).toString("base64");
 
-  await client.query('UPDATE "InstagramAccount" SET "pageToken" = $1', [combined]);
+  await client.query('UPDATE "InstagramAccount" SET "pageToken" = $1 WHERE "instagramId" = $2', [combined, IG_ID]);
   console.log("\n✅ Page token encrypted and stored in database.");
   await client.end();
   return true;

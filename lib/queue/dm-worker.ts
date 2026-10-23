@@ -38,6 +38,21 @@ import {
   renderMessageWithTracking,
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
+import {
+  declineMessage,
+  emailConfirmedReply,
+  emailPrompt,
+  emailRetry,
+  getFlowState,
+  isPlausibleEmail,
+  parseSignAnswer,
+  reportMessage,
+  unknownFlowMessage,
+  upsellMessage,
+  zodiacPrompt,
+  zodiacRetry,
+} from "@/lib/leadmagnet/conversation";
+import { deliverFreeReport } from "@/lib/leadmagnet/report";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -928,6 +943,155 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
 }
 
 /**
+ * Lead-magnet DM conversation.
+ *
+ * State machine driven by free-text answers (the Instagram DM API has no quick
+ * replies). Steps, per user per campaign, live in DmFlowState:
+ *
+ *   ask_zodiac      → zodiacPrompt; parse next answer with parseSignAnswer
+ *   ask_email       → emailPrompt;  validate with isPlausibleEmail
+ *   awaiting_delivery → report + upsell already sent; "FULL" → payment link
+ *   done            → no further messages (or "FULL" resets nothing — already delivered)
+ *
+ * The first message (keyword match / postback tap) is handled by the caller,
+ * which sends zodiacPrompt; this function only processes *follow-up* answers.
+ */
+async function processLeadMagnetAnswer(params: {
+  accessToken: string;
+  automation: {
+    id: string;
+    instagramAccountId: string;
+    instagramAccount: { instagramId: string; accessToken: string | null };
+  };
+  senderId: string;
+  messageText: string;
+  commenterName: string | null;
+}): Promise<void> {
+  const { accessToken, automation, senderId, messageText, commenterName } =
+    params;
+  const instagramId = automation.instagramAccount.instagramId;
+
+  const flow = await getFlowState(
+    automation.id,
+    automation.instagramAccountId,
+    senderId
+  );
+
+  const send = (text: string) =>
+    sendDirectMessage(accessToken, instagramId, senderId, text);
+
+  const persistStep = (data: {
+    step?: string;
+    zodiacSign?: string | null;
+    email?: string | null;
+    attemptCount?: number;
+  }) =>
+    prisma.dmFlowState.update({
+      where: { id: flow.id },
+      data: { ...data, lastMessageAt: new Date() },
+    });
+
+  switch (flow.step) {
+    case "ask_zodiac": {
+      const attemptCount = flow.attemptCount + 1;
+      const sign = parseSignAnswer(messageText);
+      if (sign) {
+        await persistStep({
+          step: "ask_email",
+          zodiacSign: sign,
+          attemptCount,
+        });
+        await send(emailPrompt(sign, commenterName));
+      } else {
+        // Give the user a few tries, then stay at this step (a later message
+        // with a sign resumes). No hard lock-out — this is a lead magnet, not
+        // a gate.
+        await persistStep({ attemptCount });
+        await send(zodiacRetry());
+      }
+      return;
+    }
+
+    case "ask_email": {
+      if (!flow.zodiacSign) {
+        // Corrupted state — restart from the sign question.
+        await persistStep({ step: "ask_zodiac", email: null });
+        await send(zodiacPrompt(commenterName));
+        return;
+      }
+
+      const trimmed = messageText.trim();
+      // An @username or any non-address is almost always a handle, not an
+      // email. isPlausibleEmail's regex already requires a dot in the domain,
+      // so "@handle" and "email@" both fail it.
+      if (!isPlausibleEmail(trimmed)) {
+        await send(emailRetry());
+        return;
+      }
+
+      const email = trimmed.toLowerCase();
+      await persistStep({ step: "awaiting_delivery", email });
+
+      // Generate + deliver the free report (DM + email), link the flow row.
+      let delivered: Awaited<ReturnType<typeof deliverFreeReport>>;
+      try {
+        delivered = await deliverFreeReport({
+          flowStateId: flow.id,
+          userId: senderId,
+          sign: flow.zodiacSign,
+          email,
+        });
+      } catch (error) {
+        console.log(
+          "[DM Worker] Lead-magnet report delivery failed:",
+          formatError(error)
+        );
+        // Don't leave the user hanging — deliver the PDF link in the DM and
+        // record the flow as delivered so they aren't re-asked.
+        await send(emailConfirmedReply(flow.zodiacSign));
+        await persistStep({ step: "done" });
+        throw error;
+      }
+
+      await send(reportMessage(flow.zodiacSign, delivered.pdfUrl));
+      await send(upsellMessage(flow.zodiacSign));
+      await persistStep({ step: "done" });
+      return;
+    }
+
+    case "awaiting_delivery":
+    case "done": {
+      // The report is already out (or being delivered). Only the upsell reply
+      // matters now.
+      if (/^\s*full\s*$/i.test(messageText)) {
+        // Paid hook — see the "FULL" payment-link route.
+        await send(
+          `✨ Great choice — here's your private link to unlock the full chart:\n\n` +
+            `${process.env.NEXT_PUBLIC_BASE_URL || "https://openreply-zeta-ruby.vercel.app"}/birthday-reading/checkout?sign=${encodeURIComponent(flow.zodiacSign ?? "")}&flow=${flow.id}\n\n` +
+            `A one-time ${"$27"} — yours to keep forever. 💛`
+        );
+        return;
+      }
+
+      if (flow.step === "awaiting_delivery") {
+        // Delivery in progress — don't confuse the user with a second offer.
+        await send(
+          `Your free reading is on its way 📩 Give it a minute — the PDF will be in your inbox and here in the chat.`
+        );
+        return;
+      }
+
+      await send(declineMessage());
+      return;
+    }
+
+    default: {
+      await send(unknownFlowMessage());
+    }
+  }
+}
+
+/**
  * Reply to an inbound DM whose text matches a campaign's keywords.
  *
  * The user has messaged us, so the conversation is already open: this path
@@ -966,7 +1130,22 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           automation.wholeWordMatch
         );
 
-    if (!matchResult.matched) continue;
+    if (!matchResult.matched) {
+      // A lead-magnet campaign also matches when the sender already has an
+      // open flow with us — their follow-up answers ("Leo", "you@email.com",
+      // "FULL") won't hit the campaign's keywords.
+      if (!automation.dmLeadMagnetEnabled) continue;
+      const existingFlow = await prisma.dmFlowState.findUnique({
+        where: {
+          automationId_userId: {
+            automationId: automation.id,
+            userId: senderId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!existingFlow) continue;
+    }
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -1085,7 +1264,40 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     }
 
     try {
-      if (sendFollowPrompt) {
+      if (automation.dmLeadMagnetEnabled) {
+        // Lead-magnet flow: first contact opens with the zodiac question; any
+        // later message advances the state machine (sign → email → delivery →
+        // upsell). The conversation itself is the engagement, so the follow
+        // gate does not apply in this mode.
+        const flow = await getFlowState(
+          automation.id,
+          automation.instagramAccountId,
+          senderId
+        );
+        if (flow.isNew) {
+          await sendDirectMessage(
+            accessToken,
+            automation.instagramAccount.instagramId,
+            senderId,
+            zodiacPrompt(commenterName)
+          );
+        } else {
+          await processLeadMagnetAnswer({
+            accessToken,
+            automation: {
+              id: automation.id,
+              instagramAccountId: automation.instagramAccountId,
+              instagramAccount: {
+                instagramId: automation.instagramAccount.instagramId,
+                accessToken: automation.instagramAccount.accessToken,
+              },
+            },
+            senderId,
+            messageText,
+            commenterName,
+          });
+        }
+      } else if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
           message:
             automation.followPromptMessage ||
