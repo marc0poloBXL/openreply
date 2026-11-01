@@ -19,7 +19,11 @@ export function verifyWebhookSignature(
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-  ].filter((s): s is string => Boolean(s));
+  ]
+    // Trim each secret: a BOM or stray whitespace from a copy-paste makes the
+    // HMAC differ from Meta's, which reads as "signature never matches".
+    .map((s) => s?.trim())
+    .filter((s): s is string => Boolean(s));
 
   if (secrets.length === 0) {
     throw new Error(

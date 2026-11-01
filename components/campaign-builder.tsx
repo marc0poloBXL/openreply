@@ -837,13 +837,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
+                {/* Meta truncates quick-reply button titles at 20 characters,
+                    silently cutting the label mid-word in the delivered DM. */}
                 <input
                   value={openingDmButtonLabel}
                   onChange={(e) => setOpeningDmButtonLabel(e.target.value)}
                   placeholder="Send me the link"
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={64}
+                  maxLength={20}
                 />
+                <p className="text-xs text-muted">
+                  {openingDmButtonLabel.length}/20 characters — Instagram cuts
+                  longer labels off.
+                </p>
               </div>
             )}
           </div>

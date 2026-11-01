@@ -15,6 +15,13 @@ const {
   mockQueueAdd,
   mockReserveWorkspaceDMSend,
   mockReleaseWorkspaceDMReservation,
+  mockGetFlowState,
+  mockCreateFlowState,
+  mockUpdateFlowState,
+  mockGetOrCreateLead,
+  mockProcessLeadMagnetAnswer,
+  mockSendLeadMagnetQuestion,
+  mockSendZodiacQuestion,
 } = vi.hoisted(() => ({
   mockPrisma: {
     automation: {
@@ -48,6 +55,13 @@ const {
   mockQueueAdd: vi.fn(),
   mockReserveWorkspaceDMSend: vi.fn(),
   mockReleaseWorkspaceDMReservation: vi.fn(),
+  mockGetFlowState: vi.fn(),
+  mockCreateFlowState: vi.fn(),
+  mockUpdateFlowState: vi.fn(),
+  mockGetOrCreateLead: vi.fn(),
+  mockProcessLeadMagnetAnswer: vi.fn(),
+  mockSendLeadMagnetQuestion: vi.fn(),
+  mockSendZodiacQuestion: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -115,6 +129,20 @@ vi.mock("@/lib/queue/client", () => ({
   MESSAGE_JOB_NAME: "process-message",
 }));
 
+vi.mock("@/lib/dm/flow-state", () => ({
+  getFlowState: mockGetFlowState,
+  createFlowState: mockCreateFlowState,
+  updateFlowState: mockUpdateFlowState,
+}));
+vi.mock("@/lib/dm/lead", () => ({
+  getOrCreateLead: mockGetOrCreateLead,
+}));
+vi.mock("@/lib/dm/lead-magnet-worker", () => ({
+  processLeadMagnetAnswer: mockProcessLeadMagnetAnswer,
+  sendLeadMagnetQuestion: mockSendLeadMagnetQuestion,
+  sendZodiacQuestion: mockSendZodiacQuestion,
+}));
+
 vi.mock("bullmq", () => {
   function MockWorker(_name: string, processor: unknown) {
     (global as Record<string, unknown>).__dmWorkerProcessor = processor;
@@ -150,6 +178,13 @@ const mockAutomation = {
   publicReplyEnabled: false,
   publicReplyMessage: null,
   publicReplyMessages: [],
+  dmTriggerEnabled: false,
+  dmLeadMagnetEnabled: false,
+  dmLeadMagnetMessage: null,
+  dmTriggerMessage: null,
+  requireFollow: false,
+  followPromptMessage: null,
+  followPromptButtonLabel: null,
   instagramAccount: {
     id: "ig_account_row_1",
     instagramId: "ig_456",
@@ -159,6 +194,13 @@ const mockAutomation = {
     id: "workspace_123",
   },
   trackedLinks: [],
+};
+
+const mockAutomationWithLeadMagnet = {
+  ...mockAutomation,
+  dmLeadMagnetEnabled: true,
+  dmLeadMagnetMessage: "Hi {username}! Let me guide you through your free reading.",
+  dmTriggerEnabled: true,
 };
 
 const mockJobData = {
@@ -273,6 +315,15 @@ beforeEach(() => {
     message_id: "msg_006",
   });
   mockGetUserFollowStatus.mockResolvedValue(true);
+
+  // Lead-magnet mocks
+  mockGetFlowState.mockResolvedValue({ isNew: true });
+  mockCreateFlowState.mockResolvedValue({ id: "flow_1", status: "active" });
+  mockUpdateFlowState.mockResolvedValue({ id: "flow_1", status: "active" });
+  mockGetOrCreateLead.mockResolvedValue({ id: "lead_1" });
+  mockProcessLeadMagnetAnswer.mockResolvedValue({ handled: true });
+  mockSendLeadMagnetQuestion.mockResolvedValue({ sent: true });
+  mockSendZodiacQuestion.mockResolvedValue({ sent: true });
 });
 
 describe("DM Worker — Full Pipeline", () => {

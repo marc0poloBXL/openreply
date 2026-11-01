@@ -3,7 +3,11 @@ import { z } from "zod";
 const HEX_32_BYTE = /^[a-f0-9]{64}$/i;
 
 function readEnv(name: string): string {
-  const value = process.env[name];
+  // A value pasted from a BOM-prefixed UTF-8 file arrives with an invisible
+  // U+FEFF glued to the front. Meta rejects such a credential as malformed,
+  // and an OAuth URL carrying one dies as "Page isn't available", so trim
+  // every value at the single point where env is read.
+  const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`${name} environment variable is required`);
   }

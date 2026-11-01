@@ -810,51 +810,95 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   }
 
   try {
-    await sendRevealDirectMessage(
-      accessToken,
-      automation,
-      userId,
-      commenterName,
-      "postback"
-    );
-    // Optional appreciation follow-up: once the link has been delivered, send a
-    // short thank-you. It is scheduled as its own delayed job so it can go out
-    // some minutes later (followUpDelayMinutes) rather than immediately. The
-    // deterministic job id dedupes repeat button taps to one follow-up per user.
-    if (automation.followUpEnabled && automation.followUpMessage?.trim()) {
-      const delayMs =
-        Math.max(0, automation.followUpDelayMinutes ?? 0) * 60_000;
-      await getDMQueue().add(
-        FOLLOWUP_JOB_NAME,
-        {
-          instagramAccountId: automation.instagramAccount.instagramId,
-          userId,
-          automationId: automation.id,
-          commenterName,
-        },
-        {
-          delay: delayMs,
-          jobId: `followup_${automation.id}_${userId}`,
-        }
+    let isReveal = true; // false when lead-magnet sends a prompt instead
+
+    if (automation.dmLeadMagnetEnabled) {
+      const flow = await getFlowState(
+        automation.id,
+        automation.instagramAccountId,
+        userId
       );
+      if (flow.isNew) {
+        // Enter the lead-magnet flow: ask the zodiac question. The user will
+        // reply via DM, which triggers processMessage -> processLeadMagnetAnswer.
+        isReveal = false;
+        await sendDirectMessage(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          userId,
+          zodiacPrompt(commenterName)
+        );
+      } else if (flow.step && flow.step !== "done") {
+        // Mid-conversation: ask them to reply via DM to continue the flow.
+        isReveal = false;
+        const stepPrompts: Record<string, string> = {
+          ask_zodiac:
+            "Thanks for tapping! Just reply to this message with your zodiac sign to get started 💫",
+          ask_email:
+            "Almost there! Reply to this message with your email address so I can send your free reading 📩",
+          awaiting_delivery:
+            "Your reading is on its way! Reply here if you have any questions 💛",
+        };
+        const prompt =
+          stepPrompts[flow.step] ??
+          "Reply to this message to continue with your free reading 💛";
+        await sendDirectMessage(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          userId,
+          prompt
+        );
+      }
+      // else: flow.step === "done" — they completed the flow, deliver the reveal
     }
-    await prisma.dmLog.upsert({
-      where: {
-        automationId_commentId: { automationId: automation.id, commentId: dedupeId },
-      },
-      create: {
-        workspaceId: automation.workspaceId,
-        automationId: automation.id,
-        instagramAccountId: automation.instagramAccountId,
-        commenterId: userId,
+
+    if (isReveal) {
+      await sendRevealDirectMessage(
+        accessToken,
+        automation,
+        userId,
         commenterName,
-        commentText: "(button tap)",
-        commentId: dedupeId,
-        status: "SENT",
-        dmSentAt: new Date(),
-      },
-      update: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
-    });
+        "postback"
+      );
+      // Optional appreciation follow-up: once the link has been delivered, send a
+      // short thank-you. It is scheduled as its own delayed job so it can go out
+      // some minutes later (followUpDelayMinutes) rather than immediately. The
+      // deterministic job id dedupes repeat button taps to one follow-up per user.
+      if (automation.followUpEnabled && automation.followUpMessage?.trim()) {
+        const delayMs =
+          Math.max(0, automation.followUpDelayMinutes ?? 0) * 60_000;
+        await getDMQueue().add(
+          FOLLOWUP_JOB_NAME,
+          {
+            instagramAccountId: automation.instagramAccount.instagramId,
+            userId,
+            automationId: automation.id,
+            commenterName,
+          },
+          {
+            delay: delayMs,
+            jobId: `followup_${automation.id}_${userId}`,
+          }
+        );
+      }
+      await prisma.dmLog.upsert({
+        where: {
+          automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+        },
+        create: {
+          workspaceId: automation.workspaceId,
+          automationId: automation.id,
+          instagramAccountId: automation.instagramAccountId,
+          commenterId: userId,
+          commenterName,
+          commentText: "(button tap)",
+          commentId: dedupeId,
+          status: "SENT",
+          dmSentAt: new Date(),
+        },
+        update: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
+      });
+    }
   } catch (error) {
     await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
 

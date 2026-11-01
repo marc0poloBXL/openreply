@@ -9,9 +9,10 @@
  * Graph API Explorer.
  */
 
-const APP_ID = process.env.INSTAGRAM_APP_ID || "2616058292165458";
-const APP_SECRET =
-  process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4";
+const APP_ID = (process.env.INSTAGRAM_APP_ID || "2616058292165458").trim();
+const APP_SECRET = (
+  process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4"
+).trim();
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
 
 import { encryptToken, createTokenRefreshState } from "@/lib/meta/oauth";

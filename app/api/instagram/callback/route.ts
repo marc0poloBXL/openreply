@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       try {
         const exchangeUrl = new URL(`https://graph.instagram.com/${version}/access_token`);
         exchangeUrl.searchParams.set("grant_type", "ig_exchange_token");
-        exchangeUrl.searchParams.set("client_secret", process.env.INSTAGRAM_APP_SECRET || "");
+        exchangeUrl.searchParams.set("client_secret", (process.env.INSTAGRAM_APP_SECRET || "").trim());
         exchangeUrl.searchParams.set("access_token", igaaToken);
         const exResp = await fetch(exchangeUrl);
         const exData = await exResp.json();

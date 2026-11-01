@@ -88,7 +88,7 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
  */
 export function getAuthorizationUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_id: requireEnv("INSTAGRAM_APP_ID"),
+    client_id: requireEnv("INSTAGRAM_APP_ID").trim(),
     redirect_uri: redirectUri,
     scope:
       "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
@@ -207,8 +207,8 @@ export async function exchangeCodeForToken(
 ): Promise<{ accessToken: string; userId: string }> {
   // Instagram Business Login: token exchange uses Instagram credentials
   const body = new URLSearchParams({
-    client_id: requireEnv("INSTAGRAM_APP_ID"),
-    client_secret: requireEnv("INSTAGRAM_APP_SECRET"),
+    client_id: requireEnv("INSTAGRAM_APP_ID").trim(),
+    client_secret: requireEnv("INSTAGRAM_APP_SECRET").trim(),
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
     code,
