@@ -9,10 +9,9 @@
  * Graph API Explorer.
  */
 
-const APP_ID = (process.env.INSTAGRAM_APP_ID || "2616058292165458").trim();
-const APP_SECRET = (
-  process.env.INSTAGRAM_APP_SECRET || "6f741ede5b48248317cc9cecd50a4ab4"
-).trim();
+// App ID is public; the secret must come from the environment, never hardcoded.
+const APP_ID = (process.env.INSTAGRAM_APP_ID || "1051360407668084").trim();
+const APP_SECRET = (process.env.INSTAGRAM_APP_SECRET || "").trim();
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
 
 import { encryptToken, createTokenRefreshState } from "@/lib/meta/oauth";
