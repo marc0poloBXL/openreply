@@ -84,7 +84,9 @@ export function emailPrompt(sign: string, commenterName: string | null): string 
     `Your free Stoic reading is being prepared. To send it to you, ` +
     `I just need your email address:\n\n` +
     `✉️ Reply with your email (e.g. you@email.com)\n\n` +
-    `I'll send your report there as a PDF you can keep. `
+    `I'll send your report there as a PDF you can keep.\n\n` +
+    `🔒 By replying, you agree I can save your email to send this reading ` +
+    `and occasional Stoic insights. You can opt out anytime.`
   );
 }
 
@@ -99,7 +101,7 @@ export function emailRetry(): string {
 /** Follow-up after confirmation (matches the Claude.md consent/opt-out rules). */
 export function emailConfirmedReply(sign: string): string {
   return (
-    `Got it! ✅ Your free ${sign} reading is on its way to your inbox.\n\n` +
+    `Got it! ✅ Thanks for agreeing — your free ${sign} reading is on its way to your inbox.\n\n` +
     `📩 Check your email in a few minutes — I've sent a PDF you can keep, plus ` +
     `a downloadable copy here.`
   );

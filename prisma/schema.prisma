@@ -406,6 +406,8 @@ model Lead {
   consentSms       Boolean   @default(false)
   consentEmailAt   DateTime?
   consentSmsAt     DateTime?
+  consentTerms     Boolean   @default(true)
+  consentTermsAt   DateTime  @default(now())
   birthDate        DateTime? @db.Date
   birthTime        String?   /// "14:30" or null
   birthplace       String?
@@ -428,7 +430,7 @@ model Lead {
 model LeadEvent {
   id        String   @id @default(cuid())
   leadId    String
-  type      String   /// quiz_completed | email_sent | email_opened | link_clicked | purchased | birthday_reading_requested | birthday_reading_sent | consent_email | consent_sms | followup_sent
+  type      String   /// quiz_completed | email_sent | email_opened | link_clicked | purchased | birthday_reading_requested | birthday_reading_sent | consent_email | consent_sms | consent_terms | followup_sent
   metadata  Json?
   createdAt DateTime @default(now())
 

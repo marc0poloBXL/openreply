@@ -1097,6 +1097,25 @@ async function processLeadMagnetAnswer(params: {
         throw error;
       }
 
+      // Record consent_terms now that the user agreed by providing their email.
+      // deliverFreeReport upserts the Lead, so it definitely exists here.
+      const existingLead = await prisma.lead.findUnique({
+        where: { email },
+      });
+      if (existingLead) {
+        await prisma.lead.update({
+          where: { id: existingLead.id },
+          data: { consentTerms: true, consentTermsAt: new Date() },
+        });
+        await prisma.leadEvent.create({
+          data: {
+            leadId: existingLead.id,
+            type: "consent_terms",
+            metadata: { source: "dm_lead_magnet" },
+          },
+        });
+      }
+
       await send(reportMessage(flow.zodiacSign, delivered.pdfUrl));
       await send(upsellMessage(flow.zodiacSign));
       await persistStep({ step: "done" });
@@ -1108,12 +1127,26 @@ async function processLeadMagnetAnswer(params: {
       // The report is already out (or being delivered). Only the upsell reply
       // matters now.
       if (/^\s*full\s*$/i.test(messageText)) {
-        // Paid hook — see the "FULL" payment-link route.
-        await send(
-          `✨ Great choice — here's your private link to unlock the full chart:\n\n` +
-            `${process.env.NEXT_PUBLIC_BASE_URL || "https://openreply-zeta-ruby.vercel.app"}/birthday-reading/checkout?sign=${encodeURIComponent(flow.zodiacSign ?? "")}&flow=${flow.id}\n\n` +
-            `A one-time ${"$27"} — yours to keep forever. 💛`
-        );
+        // Paid hook — send as a tappable link button; fall back to plain text.
+        const checkoutUrl = `${
+          process.env.NEXT_PUBLIC_BASE_URL ||
+          "https://openreply-zeta-ruby.vercel.app"
+        }/birthday-reading/checkout?sign=${encodeURIComponent(flow.zodiacSign ?? "")}&flow=${flow.id}`;
+        try {
+          await sendDirectMessageWithLinkButton(
+            accessToken,
+            instagramId,
+            senderId,
+            `✨ Great choice — here's your private link to unlock the full chart:\n\n${checkoutUrl}\n\nA one-time $27 — yours to keep forever. 💛`,
+            [{ title: "🔓 Unlock Full Chart", url: checkoutUrl }]
+          );
+        } catch {
+          await send(
+            `✨ Great choice — here's your private link to unlock the full chart:\n\n` +
+              `${process.env.NEXT_PUBLIC_BASE_URL || "https://openreply-zeta-ruby.vercel.app"}/birthday-reading/checkout?sign=${encodeURIComponent(flow.zodiacSign ?? "")}&flow=${flow.id}\n\n` +
+              `A one-time ${"$27"} — yours to keep forever. 💛`
+          );
+        }
         return;
       }
 
