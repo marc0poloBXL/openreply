@@ -575,6 +575,7 @@ enum OperationalEventSource {
   TOKEN_REFRESH
   HEALTH
   SYSTEM
+  POLLER
 }
 
 enum OperationalEventLevel {

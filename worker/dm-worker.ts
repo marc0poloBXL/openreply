@@ -1,6 +1,7 @@
 import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { pollAndReplyByCount } from "@/lib/polling/comment-count-poller";
+import { pollMessageRequests } from "@/lib/polling/request-poller";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -10,6 +11,11 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 // only fire once a day — this must fire every few minutes.
 const POLL_INTERVAL_MS = Number(
   process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
+);
+// Request poller — checks Instagram "Requests" folder every 30s by default.
+// Non-follower DMs land in this folder and do not fire webhooks until accepted.
+const REQUEST_POLL_INTERVAL_MS = Number(
+  process.env.REQUEST_POLL_INTERVAL_MS ?? 30_000
 );
 
 console.log("[DM Worker] Started");
@@ -37,10 +43,19 @@ const countPollTimer = setInterval(
   POLL_INTERVAL_MS
 );
 
+// Request poller — checks Instagram "Requests" folder for non-follower DMs.
+// Starts after 5s to let the worker init, then runs on REQUEST_POLL_INTERVAL_MS.
+setTimeout(() => void pollMessageRequests(), 5_000);
+const requestPollTimer = setInterval(
+  () => void pollMessageRequests(),
+  REQUEST_POLL_INTERVAL_MS
+);
+
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(countPollTimer);
+  clearInterval(requestPollTimer);
   await worker.close();
   process.exit(0);
 }

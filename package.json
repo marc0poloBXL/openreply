@@ -11,6 +11,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "worker": "tsx --env-file=.env worker/dm-worker.ts",
+    "diag:requests": "tsx scripts/tmp-message-requests.ts",
+    "diag:pagetoken": "tsx scripts/tmp-check-pagetoken.ts",
+    "diag:subscriptions": "tsx scripts/tmp-app-subscriptions2.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

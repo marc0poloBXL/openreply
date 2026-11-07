@@ -1116,7 +1116,18 @@ async function processLeadMagnetAnswer(params: {
         });
       }
 
-      await send(reportMessage(flow.zodiacSign, delivered.pdfUrl));
+      const pdfText = reportMessage(flow.zodiacSign, delivered.pdfUrl);
+      try {
+        await sendDirectMessageWithLinkButton(
+          accessToken,
+          instagramId,
+          senderId,
+          pdfText,
+          [{ title: "📄 Open Your Reading PDF", url: delivered.pdfUrl }]
+        );
+      } catch {
+        await send(pdfText);
+      }
       await send(upsellMessage(flow.zodiacSign));
       await persistStep({ step: "done" });
       return;

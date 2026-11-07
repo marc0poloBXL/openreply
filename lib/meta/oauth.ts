@@ -52,6 +52,18 @@ export function createTokenRefreshState(): string {
   return `${payload}.${signState(payload)}`;
 }
 
+/**
+ * State for the unified Facebook Login flow — combines Instagram + FB page scopes
+ * in a single OAuth step. The workspaceId is required for DB lookups and the
+ * "unified" mode signals the callback to store the page token as accessToken too.
+ */
+export function createUnifiedOAuthState(workspaceId: string): string {
+  const payload = base64UrlEncode(
+    JSON.stringify({ workspaceId, ts: Date.now(), mode: "unified" } satisfies OAuthStatePayload)
+  );
+  return `${payload}.${signState(payload)}`;
+}
+
 export function verifyOAuthState(state: string | null): OAuthStatePayload | null {
   if (!state) return null;
 
@@ -112,6 +124,27 @@ export function getFacebookAuthorizationUrl(
     client_id: requireEnv("FACEBOOK_APP_ID"),
     redirect_uri: redirectUri,
     scope: "pages_show_list,pages_read_engagement,pages_manage_metadata,business_management",
+    response_type: "code",
+    state,
+  });
+
+  return `${FACEBOOK_OAUTH_URL}?${params.toString()}`;
+}
+
+/**
+ * Get the unified Facebook Login authorization URL that combines Instagram
+ * business scopes AND Facebook page scopes in a single OAuth step.
+ * Used by the connect flow — replaces the two-step Instagram + FB Login.
+ */
+export function getUnifiedAuthorizationUrl(
+  redirectUri: string,
+  state: string
+): string {
+  const params = new URLSearchParams({
+    client_id: requireEnv("FACEBOOK_APP_ID"),
+    redirect_uri: redirectUri,
+    scope:
+      "pages_show_list,pages_read_engagement,pages_manage_metadata,business_management,instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
     response_type: "code",
     state,
   });
@@ -196,6 +229,26 @@ export async function getConnectedPageToken(
   }
 
   return null;
+}
+
+/**
+ * Derive an Instagram Business Account token from a Facebook Page token.
+ *
+ * In the unified OAuth flow, the page token (obtained from the FB Login + FB Page
+ * connection) serves double duty: it IS the Instagram Business Account token,
+ * because the page is linked to the IG Business Account and the same token works
+ * on graph.facebook.com for IG API calls.
+ *
+ * @param pageToken - The Facebook Page access token.
+ * @param _igBusinessAccountId - The Instagram Business Account ID (unused — the
+ *   page token already covers it; kept as a parameter for API consistency).
+ * @returns The same page token, callable as an IG Business Account token.
+ */
+export function deriveIgBusinessAccountToken(
+  pageToken: string,
+  _igBusinessAccountId: string
+): string {
+  return pageToken;
 }
 
 /**

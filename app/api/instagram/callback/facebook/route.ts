@@ -107,7 +107,7 @@ async function subscribeWebhooks(token: string): Promise<{ ok: boolean }> {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: token, subscribed_fields: "comments,messages" }),
+        body: JSON.stringify({ access_token: token, subscribed_fields: "comments,messages,messaging_postbacks" }),
       }
     );
     const data: any = await sub.json();
@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({
               access_token: longLivedFbToken,
-              subscribed_fields: "comments,messages",
+              subscribed_fields: "comments,messages,messaging_postbacks",
             }).toString(),
           }
         );
@@ -413,7 +413,12 @@ export async function GET(request: NextRequest) {
 
     await prisma.instagramAccount.update({
       where: { id: igAccount.id },
-      data: { pageToken: encryptedPageToken, tokenExpiresAt, webhookSubscribed },
+      data: {
+        pageToken: encryptedPageToken,
+        tokenExpiresAt,
+        webhookSubscribed,
+        ...(state.mode === "unified" ? { accessToken: encryptedPageToken } : {}),
+      },
     });
 
     return NextResponse.redirect(baseUrl + "/dashboard?facebook_connected=true");

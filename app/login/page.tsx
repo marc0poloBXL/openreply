@@ -21,7 +21,7 @@ export default async function LoginPage({
   const templateCallbackUrl = selectedTemplate
     ? `/campaigns/new?template=${selectedTemplate.slug}`
     : null;
-  const callbackUrl = params.callbackUrl ?? templateCallbackUrl ?? "/dashboard";
+  const callbackUrl = decodeURIComponent(params.callbackUrl ?? templateCallbackUrl ?? "/dashboard");
 
   async function sendMagicLink(formData: FormData) {
     "use server";
