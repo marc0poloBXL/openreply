@@ -35,10 +35,16 @@ const AUTO_REPLY =
  * the original message for DM processing. Best-effort — never throws.
  */
 export async function pollMessageRequests(): Promise<void> {
-  const account = await prisma.instagramAccount.findFirst({
-    where: { instagramId: IG_USER_ID },
-    orderBy: { connectedAt: "desc" },
-  });
+  let account: { pageToken: string | null } | null = null;
+  try {
+    account = await prisma.instagramAccount.findFirst({
+      where: { instagramId: IG_USER_ID },
+      orderBy: { connectedAt: "desc" },
+    });
+  } catch (e: any) {
+    console.log("[RequestPoller] DB query failed (Supabase unreachable?):", e.message);
+    return;
+  }
 
   if (!account?.pageToken) {
     console.log("[RequestPoller] No pageToken — skipping");

@@ -14,6 +14,8 @@
     "diag:requests": "tsx scripts/tmp-message-requests.ts",
     "diag:pagetoken": "tsx scripts/tmp-check-pagetoken.ts",
     "diag:subscriptions": "tsx scripts/tmp-app-subscriptions2.ts",
+    "diag:db": "tsx --env-file=.env _query_db.js",
+    "checkflow": "tsx --env-file=.env scripts/check-dmflowstate.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

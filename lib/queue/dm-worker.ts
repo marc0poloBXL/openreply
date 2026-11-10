@@ -1564,21 +1564,15 @@ export function createDMWorker(): Worker<DmQueueJob> {
 
   worker.on("error", (err) => {
     console.error("[DM Worker] Worker error:", err.message);
-    void prisma.operationalEvent
-      .create({
-        data: {
-          source: "WORKER",
-          level: "ERROR",
-          message: `DM worker process error: ${err.message}`,
-          payload: { name: err.name },
-        },
-      })
-      .catch((recordError) => {
-        console.error(
-          "[DM Worker] Failed to record worker process error:",
-          formatError(recordError)
-        );
-      });
+    void recordWorkerAlert({
+      level: "error",
+      message: `DM worker process error: ${err.message}`,
+    }).catch((recordError) => {
+      console.error(
+        "[DM Worker] Failed to record worker alert:",
+        formatError(recordError)
+      );
+    });
   });
 
   return worker;
