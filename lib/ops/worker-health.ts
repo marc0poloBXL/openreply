@@ -80,7 +80,7 @@ export async function recordWorkerAlert(alert: Omit<WorkerAlert, "createdAt">) {
 
   const redis = getRedisConnection();
   await redis.lpush(WORKER_ALERTS_KEY, JSON.stringify(payload));
-  await redis.ltrim(WORKER_ALERTS_KEY, 0, 24);
+  await redis.ltrim(WORKER_ALERTS_KEY, 0, 499);
 }
 
 export async function getWorkerAlerts(limit = 10): Promise<WorkerAlert[]> {

@@ -1573,6 +1573,19 @@ export function createDMWorker(): Worker<DmQueueJob> {
         formatError(recordError)
       );
     });
+    // Also persist to Postgres for durable history (workspaceId is unknown at
+    // this scope, so OperationalEvent keeps it null — the message still logs).
+    prisma.operationalEvent
+      .create({
+        data: {
+          source: "SYSTEM",
+          level: "ERROR",
+          message: `DM worker process error: ${err.message}`,
+        },
+      })
+      .catch(() => {
+        // Redis + Postgres both failed — nothing more we can do
+      });
   });
 
   return worker;

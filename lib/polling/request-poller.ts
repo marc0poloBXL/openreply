@@ -35,7 +35,11 @@ const AUTO_REPLY =
  * the original message for DM processing. Best-effort — never throws.
  */
 export async function pollMessageRequests(): Promise<void> {
-  let account: { pageToken: string | null } | null = null;
+  let account: {
+    pageToken: string | null;
+    instagramId: string;
+    workspaceId: string;
+  } | null = null;
   try {
     account = await prisma.instagramAccount.findFirst({
       where: { instagramId: IG_USER_ID },
