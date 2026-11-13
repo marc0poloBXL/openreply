@@ -20,7 +20,7 @@ const IG_ID = "17841438935909153";
 const PAGE_ID = "1229304876940609";
 const PAGE_ID_OLD = "61594011424463";
 const BM_ID = "2052016095704629";
-const IG_ACCOUNT_DB_ID = "cmtocgan5000004kzet71p0ka";
+const IG_ACCOUNT_DB_ID = "cmvgyce9o0003b8ve8srlasdl";
 
 import { encryptToken } from "@/lib/meta/oauth";
 import { prisma } from "@/lib/db/client";
