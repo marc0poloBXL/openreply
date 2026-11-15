@@ -15,6 +15,10 @@
 const APP_ID = "1051360407668084";
 const APP_SECRET = "b2708ce0c790783fbf27c0dfcc0e1459";
 const API_VER = process.env.META_GRAPH_API_VERSION || "v26.0";
+// Newer API versions removed the link endpoints. Use v18.0 (known-working) for
+// all POST operations: /{pageId}/instagram_accounts, /{BM_ID}/owned_instagram_accounts,
+// /{IG_ID}/assigned_pages, and Conversations API.
+const LINK_API_VER = "v18.0";
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://openreply-zeta-ruby.vercel.app";
 const IG_ID = "17841438935909153";
 const PAGE_ID = "1229304876940609";
@@ -271,7 +275,7 @@ async function processLongToken(longLivedToken: string, req: Request): Promise<R
     for (const { label, token } of linkTokens) {
       try {
         const linkRes = await fetch(
-          `https://graph.facebook.com/${API_VER}/${pageInfo.pageId}/instagram_accounts`,
+          `https://graph.facebook.com/${LINK_API_VER}/${pageInfo.pageId}/instagram_accounts`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -299,7 +303,7 @@ async function processLongToken(longLivedToken: string, req: Request): Promise<R
       // Method B: Try via Business Manager
       try {
         const bmRes = await fetch(
-          `https://graph.facebook.com/${API_VER}/${BM_ID}/owned_instagram_accounts`,
+          `https://graph.facebook.com/${LINK_API_VER}/${BM_ID}/owned_instagram_accounts`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -330,7 +334,7 @@ async function processLongToken(longLivedToken: string, req: Request): Promise<R
     if (!linkResult.includes("success")) {
       try {
         const assignRes = await fetch(
-          `https://graph.facebook.com/${API_VER}/${IG_ID}/assigned_pages`,
+          `https://graph.facebook.com/${LINK_API_VER}/${IG_ID}/assigned_pages`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -362,7 +366,7 @@ async function processLongToken(longLivedToken: string, req: Request): Promise<R
           const { decryptToken } = await import("@/lib/meta/oauth");
           const igaaToken = decryptToken(stored.accessToken);
           const assignRes = await fetch(
-            `https://graph.facebook.com/${API_VER}/${IG_ID}/assigned_pages`,
+            `https://graph.facebook.com/${LINK_API_VER}/${IG_ID}/assigned_pages`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
