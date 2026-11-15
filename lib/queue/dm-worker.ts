@@ -1092,9 +1092,12 @@ async function processLeadMagnetAnswer(params: {
         );
         // Don't leave the user hanging — deliver the PDF link in the DM and
         // record the flow as delivered so they aren't re-asked.
+        // NOTE: we do NOT re-throw here — the fallback DM has already been
+        // sent and the flow step is persisted to "done", so re-throwing would
+        // only cause a BullMQ job failure that the user sees as "server error".
         await send(emailConfirmedReply(flow.zodiacSign));
         await persistStep({ step: "done" });
-        throw error;
+        return;
       }
 
       // Record consent_terms now that the user agreed by providing their email.
